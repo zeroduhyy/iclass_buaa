@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <title>北航iClass签到二维码实时生成器（离线版）</title>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        input,
+        button {
+            font-size: 16px;
+            margin: 5px 0;
+            width: 100%;
+            max-width: 300px;
+        }
+
+        label {
+            text-align: center;
+            width: 100%;
+            max-width: 300px;
+        }
+
+        #qrcode {
+            margin-top: 20px;
+            display: flex;
+            justify-content: center;
+        }
+
+        #timestamp {
+            font-size: 14px;
+            color: gray;
+            margin-top: 5px;
+        }
+
+        h2 {
+            text-align: center;
+        }
+
+        select {
+            font-size: 16px;
+            padding: 5px;
+            margin-top: 10px;
+        }
+    </style>
+    <script>
+        let timer = null;
+        let courseSchedId = "";
+
+        // 获取课程数据并填充选择框
+        window.onload = function () {
+            fetch('/').then(response => response.text()).then(data => {
+                document.getElementById('courseSelect').innerHTML = data;
+            });
+        }
+
+        // 生成二维码
+        function startGenerating() {
+            if (!courseSchedId) {
+                alert('请选择课程');
+                return;
+            }
+
+            // 开始生成二维码，每隔3秒更新一次
+            if (timer) clearInterval(timer);  // 清除之前的定时器
+            generateQRCode();  // 初始化生成二维码
+            timer = setInterval(generateQRCode, 2000);  // 每3秒更新一次二维码
+        }
+
+        // 生成二维码并更新显示
+        function generateQRCode() {
+            const timestamp = Date.now();
+            fetch('/generate_qr', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ courseSchedId, timestamp })
+            })
+                .then(response => response.json())
+                .then(data => {
+                    const qrContainer = document.getElementById('qrcode');
+                    qrContainer.innerHTML = ''; // 清空旧二维码
+                    QRCode.toCanvas(data.qrUrl, { width: 200 }, function (err, canvas) {
+                        if (!err) qrContainer.appendChild(canvas);
+                    });
+
+                    // 更新时间显示
+                    const timeDisplay = document.getElementById('timestamp');
+                    const date = new Date(timestamp);
+                    timeDisplay.textContent = `当前时间: ${date.toLocaleString()}`;
+                });
+        }
+
+        // 设置课程选项
+        function selectCourse() {
+            const courseSelect = document.getElementById('courseSelect');
+            courseSchedId = courseSelect.value;
+        }
+    </script>
+</head>
+
+<body>
+
+    <h2>北航iClass签到二维码实时生成器（离线版）</h2>
+
+    <!-- 显示课程选择 -->
+    <label for="courseSelect">选择课程:</label>
+    <select id="courseSelect" onchange="selectCourse()">
+        <option value="">请选择课程</option>
+        {% for course in courses %}
+        <option value="{{ course.courseSchedId }}">{{ course.name }} ({{ course.id }})</option>
+        {% endfor %}
+    </select>
+
+    <button onclick="startGenerating()">开始生成实时二维码</button>
+
+    <h3>当前二维码:</h3>
+    <div id="qrcode"></div>
+    <div id="timestamp">当前时间将显示在这里</div>
+
+</body>
+
+</html>
