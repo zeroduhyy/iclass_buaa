@@ -1,6 +1,7 @@
 from flask import Flask, render_template, request, jsonify
 import requests
 import json
+from datetime import datetime
 
 app = Flask(__name__)
 
@@ -48,17 +49,29 @@ def get_courses(user_id, session_id):
         course_data = course_response.json()
 
         if "result" in course_data and len(course_data["result"]) > 0:
+            # 按照日期对课程记录进行排序
             sorted_courses = sorted(
-                course_data["result"], key=lambda x: x["createDate"], reverse=True
+                course_data["result"],
+                key=lambda x: x["teachTime"],
+                reverse=True,  # 倒序，最新的日期排在前面
             )
-            latest_course = sorted_courses[0]
-            available_courses.append(
-                {
-                    "name": course_name,
-                    "id": course_id,
-                    "courseSchedId": latest_course["courseSchedId"],
-                }
-            )
+
+            # 保存所有课程记录，而不仅仅是最新的
+            for course_record in sorted_courses:
+                # 格式化日期，使其更易读
+                teach_date = course_record["teachTime"]
+                formatted_date = f"{teach_date[:4]}-{teach_date[4:6]}-{teach_date[6:]}"
+
+                # 添加到可用课程列表
+                available_courses.append(
+                    {
+                        "name": course_name,
+                        "id": course_id,
+                        "courseSchedId": course_record["courseSchedId"],
+                        "date": formatted_date,
+                        "fullRecord": course_record,
+                    }
+                )
 
     return available_courses
 

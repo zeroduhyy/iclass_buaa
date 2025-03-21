@@ -3,62 +3,88 @@
 
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>北航iClass签到二维码实时生成器（离线版）</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
     <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            padding: 20px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
-
-        input,
-        button {
-            font-size: 16px;
-            margin: 5px 0;
-            width: 100%;
-            max-width: 300px;
-        }
-
-        label {
-            text-align: center;
-            width: 100%;
-            max-width: 300px;
-        }
-
-        #qrcode {
-            margin-top: 20px;
-            display: flex;
-            justify-content: center;
-        }
-
-        #timestamp {
-            font-size: 14px;
-            color: gray;
-            margin-top: 5px;
-        }
-
-        h2 {
-            text-align: center;
-        }
-
-        select {
-            font-size: 16px;
-            padding: 5px;
-            margin-top: 10px;
-        }
-    </style>
     <script>
         let timer = null;
         let courseSchedId = "";
 
-        // 获取课程数据并填充选择框
-        window.onload = function () {
-            fetch('/').then(response => response.text()).then(data => {
-                document.getElementById('courseSelect').innerHTML = data;
+        // 页面加载完成后初始化
+        document.addEventListener('DOMContentLoaded', function () {
+            // 将课程数据传递给JavaScript
+            const coursesData = JSON.parse('{{ courses|tojson|safe }}');
+            renderCalendarView(coursesData);
+        });
+
+        // 渲染日历视图
+        function renderCalendarView(courses) {
+            // 按日期分组课程
+            const coursesByDate = {};
+            courses.forEach(course => {
+                if (!coursesByDate[course.date]) {
+                    coursesByDate[course.date] = [];
+                }
+                coursesByDate[course.date].push(course);
             });
+
+            // 获取所有日期并排序
+            const dates = Object.keys(coursesByDate).sort().reverse();
+
+            // 构建日历网格
+            const calendarContainer = document.getElementById('calendar-container');
+            calendarContainer.innerHTML = ''; // 清空容器
+
+            // 创建日期面板
+            dates.forEach(date => {
+                const datePanel = document.createElement('div');
+                datePanel.className = 'date-panel';
+
+                // 创建日期头部
+                const dateHeader = document.createElement('div');
+                dateHeader.className = 'date-header';
+                dateHeader.textContent = formatDate(date);
+                datePanel.appendChild(dateHeader);
+
+                // 创建课程列表
+                const courseList = document.createElement('div');
+                courseList.className = 'course-list';
+
+                coursesByDate[date].forEach(course => {
+                    const courseItem = document.createElement('div');
+                    courseItem.className = 'course-item';
+                    courseItem.textContent = course.name;
+                    courseItem.dataset.courseSchedId = course.courseSchedId;
+                    courseItem.onclick = function () {
+                        // 移除其他所有选中状态
+                        document.querySelectorAll('.course-item.selected').forEach(item => {
+                            item.classList.remove('selected');
+                        });
+                        // 添加选中状态
+                        this.classList.add('selected');
+                        // 设置选中的courseSchedId
+                        courseSchedId = this.dataset.courseSchedId;
+                        document.getElementById('selected-course-name').textContent = course.name;
+                        document.getElementById('selected-course-date').textContent = formatDate(course.date);
+                        // 显示已选课程信息
+                        document.getElementById('selected-course-info').style.display = 'block';
+                    };
+                    courseList.appendChild(courseItem);
+                });
+
+                datePanel.appendChild(courseList);
+                calendarContainer.appendChild(datePanel);
+            });
+        }
+
+        // 格式化日期显示
+        function formatDate(dateStr) {
+            const [year, month, day] = dateStr.split('-');
+            const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+            const date = new Date(year, month - 1, day);
+            const weekday = weekdays[date.getDay()];
+            return `${month}月${day}日 ${weekday}`;
         }
 
         // 生成二维码
@@ -68,15 +94,16 @@
                 return;
             }
 
-            // 开始生成二维码，每隔3秒更新一次
+            // 开始生成二维码，每隔2秒更新一次
             if (timer) clearInterval(timer);  // 清除之前的定时器
             generateQRCode();  // 初始化生成二维码
-            timer = setInterval(generateQRCode, 2000);  // 每3秒更新一次二维码
+            timer = setInterval(generateQRCode, 2000);  // 每2秒更新一次二维码
         }
 
         // 生成二维码并更新显示
         function generateQRCode() {
             const timestamp = Date.now();
+
             fetch('/generate_qr', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -86,44 +113,60 @@
                 .then(data => {
                     const qrContainer = document.getElementById('qrcode');
                     qrContainer.innerHTML = ''; // 清空旧二维码
-                    QRCode.toCanvas(data.qrUrl, { width: 200 }, function (err, canvas) {
-                        if (!err) qrContainer.appendChild(canvas);
-                    });
+
+                    // 尝试生成二维码
+                    try {
+                        QRCode.toCanvas(data.qrUrl, { width: 300, margin: 2 }, function (err, canvas) {
+                            if (err) {
+                                qrContainer.innerHTML = "<p style='color:red;text-align:center'>二维码生成失败</p>";
+                            } else {
+                                qrContainer.appendChild(canvas);
+                            }
+                        });
+                    } catch (ex) {
+                        qrContainer.innerHTML = "<p style='color:red;text-align:center'>二维码生成异常</p>";
+                    }
 
                     // 更新时间显示
                     const timeDisplay = document.getElementById('timestamp');
                     const date = new Date(timestamp);
                     timeDisplay.textContent = `当前时间: ${date.toLocaleString()}`;
+                })
+                .catch(error => {
+                    document.getElementById('qrcode').innerHTML = "<p style='color:red;text-align:center'>请求失败</p>";
                 });
-        }
-
-        // 设置课程选项
-        function selectCourse() {
-            const courseSelect = document.getElementById('courseSelect');
-            courseSchedId = courseSelect.value;
         }
     </script>
 </head>
 
 <body>
+    <div class="container">
+        <h2>北航iClass签到二维码实时生成器（离线版）</h2>
 
-    <h2>北航iClass签到二维码实时生成器（离线版）</h2>
+        <div class="two-column-layout">
+            <!-- 左侧列 - 日历系统 -->
+            <div class="left-column">
+                <h3>选择课程</h3>
+                <div id="calendar-container" class="calendar-container">
+                    <!-- 这里将由JavaScript动态生成日历视图 -->
+                </div>
+            </div>
 
-    <!-- 显示课程选择 -->
-    <label for="courseSelect">选择课程:</label>
-    <select id="courseSelect" onchange="selectCourse()">
-        <option value="">请选择课程</option>
-        {% for course in courses %}
-        <option value="{{ course.courseSchedId }}">{{ course.name }} ({{ course.id }})</option>
-        {% endfor %}
-    </select>
+            <!-- 右侧列 - 二维码生成部分 -->
+            <div class="right-column">
+                <div id="selected-course-info" class="selected-course-info" style="display: none;">
+                    <h4>已选课程:</h4>
+                    <p><span id="selected-course-name"></span> - <span id="selected-course-date"></span></p>
+                </div>
 
-    <button onclick="startGenerating()">开始生成实时二维码</button>
+                <button onclick="startGenerating()">开始生成实时二维码</button>
 
-    <h3>当前二维码:</h3>
-    <div id="qrcode"></div>
-    <div id="timestamp">当前时间将显示在这里</div>
-
+                <h3>当前二维码</h3>
+                <div id="qrcode"></div>
+                <div id="timestamp">当前时间将显示在这里</div>
+            </div>
+        </div>
+    </div>
 </body>
 
 </html>
