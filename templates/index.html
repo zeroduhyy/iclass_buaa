@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>北航iClass签到二维码实时生成器（离线版）</title>
+    <title>北航iClass签到二维码生成器</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
     <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
     <script>
@@ -141,7 +141,13 @@
 
 <body>
     <div class="container">
-        <h2>北航iClass签到二维码实时生成器（离线版）</h2>
+        <header class="app-header">
+            <h2>北航iClass签到二维码生成器</h2>
+            <div class="user-info">
+                <span>欢迎您，{{ user_name }}</span>
+                <a href="/logout" class="logout-btn">退出登录</a>
+            </div>
+        </header>
 
         <div class="two-column-layout">
             <!-- 左侧列 - 日历系统 -->
