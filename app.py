@@ -163,8 +163,27 @@ def login_page():
     """登录页面"""
     # 如果已经登录，直接跳转到课程页面
     if "user_id" in session and "session_id" in session:
-        return redirect(url_for("index"))
+        return redirect(url_for("courses"))
     return render_template("login.html")
+
+
+# 修改路由名称，使其更加清晰
+@app.route("/courses")
+def courses():
+    """课程列表页面"""
+    # 检查是否已登录
+    if "user_id" not in session or "session_id" not in session:
+        return redirect(url_for("login_page"))
+
+    # 获取课程签到详情
+    courses_detail = get_courses_detail(
+        session["user_id"], session["session_id"], session["courses"]
+    )
+
+    # 渲染模板，传入用户名和课程信息
+    return render_template(
+        "index.html", courses=courses_detail, user_name=session["user_name"]
+    )
 
 
 @app.route("/login", methods=["POST"])
@@ -199,25 +218,7 @@ def login():
     session["courses"] = courses
 
     # 重定向到课程列表页面
-    return redirect(url_for("index"))
-
-
-@app.route("/courses")
-def index():
-    """课程列表页面"""
-    # 检查是否已登录
-    if "user_id" not in session or "session_id" not in session:
-        return redirect(url_for("login_page"))
-
-    # 获取课程签到详情
-    courses_detail = get_courses_detail(
-        session["user_id"], session["session_id"], session["courses"]
-    )
-
-    # 渲染模板，传入用户名和课程信息
-    return render_template(
-        "index.html", courses=courses_detail, user_name=session["user_name"]
-    )
+    return redirect(url_for("courses"))  # 这里从 "index" 改为 "courses"
 
 
 @app.route("/generate_qr", methods=["POST"])
