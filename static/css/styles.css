@@ -1,0 +1,565 @@
+/* 全局样式 */
+body {
+    font-family: 'Microsoft YaHei', Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+    background-color: #f5f7fa;
+    color: #333;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+/* 应用头部 */
+.app-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: linear-gradient(135deg, #2b5876 0%, #4e4376 100%);
+    color: white;
+    padding: 15px 20px;
+    border-radius: 10px;
+    margin-bottom: 20px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.app-header h2 {
+    margin: 0;
+    font-size: 1.5rem;
+    font-weight: 600;
+}
+
+.user-info {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.logout-btn {
+    color: white;
+    text-decoration: none;
+    background-color: rgba(255, 255, 255, 0.2);
+    padding: 6px 12px;
+    border-radius: 20px;
+    transition: all 0.3s ease;
+}
+
+.logout-btn:hover {
+    background-color: rgba(255, 255, 255, 0.3);
+    transform: translateY(-2px);
+}
+
+/* 两列布局 */
+.two-column-layout {
+    display: flex;
+    width: 100%;
+    gap: 30px;
+}
+
+.left-column {
+    flex: 1;
+    min-width: 0;
+    /* 防止弹性元素溢出 */
+    max-height: 80vh;
+    overflow-y: auto;
+    /* 如果内容过多可滚动 */
+}
+
+.right-column {
+    flex: 1;
+    min-width: 0;
+    /* 防止弹性元素溢出 */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding-left: 20px;
+    border-left: 1px solid #eee;
+}
+
+/* 日历容器样式 - 现在只需要一列 */
+.calendar-container {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    width: 100%;
+    margin: 20px 0;
+    margin-bottom: 30px;
+}
+
+/* 日期面板样式 */
+.date-panel {
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    background-color: white;
+    transition: transform 0.2s, box-shadow 0.2s;
+    margin-bottom: 15px;
+}
+
+.date-panel:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+}
+
+.date-header {
+    background-color: #4285f4;
+    color: white;
+    padding: 10px 15px;
+    font-weight: bold;
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+}
+
+.course-list {
+    padding: 10px;
+}
+
+.course-item {
+    padding: 12px 15px;
+    margin: 5px 0;
+    border-radius: 5px;
+    background-color: #f8f9fa;
+    cursor: pointer;
+    transition: all 0.2s;
+    border-left: 3px solid transparent;
+}
+
+.course-item:hover {
+    background-color: #e8f0fe;
+    border-left-color: #4285f4;
+}
+
+.course-item.selected {
+    background-color: #e8f0fe;
+    border-left-color: #4285f4;
+    font-weight: bold;
+}
+
+/* 已选课程信息 */
+.selected-course-info {
+    width: 100%;
+    margin: 0 0 20px 0;
+    padding: 15px;
+    background-color: #e8f0fe;
+    border-radius: 8px;
+    border-left: 4px solid #4285f4;
+    text-align: center;
+}
+
+.selected-course-info h4 {
+    margin: 0 0 10px 0;
+    color: #4285f4;
+}
+
+.selected-course-info p {
+    margin: 0;
+    font-size: 16px;
+}
+
+/* 按钮样式 */
+button {
+    background-color: #4285f4;
+    color: white;
+    border: none;
+    padding: 12px 20px;
+    border-radius: 5px;
+    font-size: 16px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+    width: 100%;
+    max-width: 300px;
+    margin: 20px 0;
+}
+
+button:hover {
+    background-color: #3367d6;
+}
+
+/* 二维码显示区域 */
+#qrcode {
+    margin: 20px 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+}
+
+#qrcode canvas {
+    margin-top: 20px;
+    border: 10px solid white;
+    box-shadow: 0 0 15px rgba(0, 0, 0, 0.1);
+}
+
+#timestamp {
+    font-size: 14px;
+    color: #666;
+    margin-top: 15px;
+    text-align: center;
+}
+
+h2,
+h3 {
+    text-align: center;
+    color: #333;
+    margin-bottom: 20px;
+}
+
+h3 {
+    color: #4285f4;
+    margin-top: 30px;
+}
+
+.right-column h3 {
+    margin-top: 0;
+}
+
+/* 日历导航 */
+.week-navigation {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-bottom: 20px;
+    gap: 15px;
+    background-color: white;
+    padding: 15px;
+    border-radius: 10px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.nav-btn {
+    background: linear-gradient(135deg, #2b5876 0%, #4e4376 100%);
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 20px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.3s;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+.nav-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.current-btn {
+    background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+}
+
+.current-btn:hover {
+    background: linear-gradient(135deg, #0f8a80 0%, #32d572 100%);
+}
+
+#current-week-display {
+    font-weight: 600;
+    font-size: 16px;
+    min-width: 250px;
+    text-align: center;
+    color: #444;
+    background-color: #f5f7fa;
+    padding: 8px 15px;
+    border-radius: 20px;
+}
+
+/* 日历网格 */
+.calendar-grid {
+    background-color: white;
+    border-radius: 10px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+    overflow: hidden;
+}
+
+.calendar-header {
+    display: grid;
+    grid-template-columns: 100px repeat(7, 1fr);
+    background: linear-gradient(to right, #e6e9f0 0%, #eef1f5 100%);
+    font-weight: 600;
+    text-align: center;
+}
+
+.time-column, .day-column {
+    padding: 12px 5px;
+    border-bottom: 1px solid #eaecef;
+    border-right: 1px solid #eaecef;
+}
+
+.calendar-row {
+    display: grid;
+    grid-template-columns: 100px repeat(7, 1fr);
+    min-height: 150px;
+}
+
+.day-cell {
+    padding: 8px;
+    border-bottom: 1px solid #eaecef;
+    border-right: 1px solid #eaecef;
+    background-color: rgba(255, 255, 255, 0.8);
+    min-height: 120px;
+    overflow-y: auto;
+    transition: background-color 0.2s;
+    position: relative;
+}
+
+.today-cell {
+    background-color: rgba(232, 240, 254, 0.5);
+}
+
+.date-label {
+    position: absolute;
+    top: 4px;
+    right: 6px;
+    font-size: 12px;
+    color: #888;
+    background-color: rgba(255, 255, 255, 0.7);
+    padding: 2px 5px;
+    border-radius: 10px;
+}
+
+/* 课程卡片 */
+.course-card {
+    background-color: #f5f7fa;
+    border-left: 4px solid #4e4376;
+    border-radius: 6px;
+    padding: 10px;
+    margin: 12px 0 8px 0;
+    cursor: pointer;
+    transition: all 0.3s;
+    position: relative;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+}
+
+.course-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.course-card.selected {
+    background-color: #e8f0fe;
+    box-shadow: 0 0 0 2px #4e4376;
+}
+
+.course-signed {
+    background-color: #ecf9f0;
+    border-left-color: #34c759;
+}
+
+.course-unsigned {
+    background-color: #fff8e6;
+    border-left-color: #ff9500;
+}
+
+.course-name {
+    font-weight: 600;
+    margin-bottom: 5px;
+    font-size: 14px;
+    color: #333;
+}
+
+.course-time {
+    font-size: 12px;
+    color: #666;
+}
+
+/* 选中的课程信息 */
+.selected-course-info {
+    background-color: white;
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+}
+
+.info-header {
+    font-size: 18px;
+    font-weight: 600;
+    margin-bottom: 15px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #eaecef;
+    color: #4e4376;
+}
+
+.info-content p {
+    margin: 10px 0;
+    line-height: 1.6;
+}
+
+.status-signed {
+    color: #34c759;
+    font-weight: 600;
+    background-color: rgba(52, 199, 89, 0.1);
+    padding: 3px 8px;
+    border-radius: 12px;
+}
+
+.status-unsigned {
+    color: #ff9500;
+    font-weight: 600;
+    background-color: rgba(255, 149, 0, 0.1);
+    padding: 3px 8px;
+    border-radius: 12px;
+}
+
+/* 二维码部分 */
+.qrcode-section {
+    background-color: white;
+    border-radius: 10px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+    padding: 25px;
+}
+
+.qrcode-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+.qrcode-container h3 {
+    margin-top: 0;
+    margin-bottom: 20px;
+    color: #4e4376;
+    font-weight: 600;
+    position: relative;
+}
+
+.qrcode-container h3:after {
+    content: '';
+    position: absolute;
+    width: 40px;
+    height: 3px;
+    background: linear-gradient(135deg, #2b5876 0%, #4e4376 100%);
+    bottom: -10px;
+    left: 50%;
+    transform: translateX(-50%);
+    border-radius: 3px;
+}
+
+.qrcode-display {
+    margin: 20px 0;
+    min-height: 150px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.qrcode-display canvas {
+    border: 15px solid white;
+    box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
+    border-radius: 10px;
+}
+
+.update-notice {
+    background-color: #e8f0fe;
+    color: #4e4376;
+    padding: 10px 18px;
+    border-radius: 20px;
+    font-size: 14px;
+    margin-bottom: 15px;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(78, 67, 118, 0.2); }
+    70% { box-shadow: 0 0 0 10px rgba(78, 67, 118, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(78, 67, 118, 0); }
+}
+
+.timestamp-display {
+    margin-top: 15px;
+    color: #666;
+    font-size: 14px;
+    background-color: #f5f7fa;
+    padding: 8px 15px;
+    border-radius: 20px;
+}
+
+.generate-btn {
+    background: linear-gradient(135deg, #2b5876 0%, #4e4376 100%);
+    color: white;
+    border: none;
+    padding: 12px 20px;
+    border-radius: 25px;
+    cursor: pointer;
+    font-size: 16px;
+    margin-top: 15px;
+    transition: all 0.3s;
+    width: 100%;
+    font-weight: 500;
+    letter-spacing: 0.5px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.generate-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+}
+
+.generate-btn:active {
+    transform: translateY(1px);
+}
+
+.error-message {
+    color: #ff3b30;
+    text-align: center;
+    padding: 10px;
+    background-color: rgba(255, 59, 48, 0.1);
+    border-radius: 8px;
+}
+
+.no-courses {
+    text-align: center;
+    padding: 30px;
+    color: #888;
+    font-style: italic;
+}
+
+/* 响应式调整 */
+@media (max-width: 900px) {
+    .two-column-layout {
+        flex-direction: column;
+    }
+
+    .right-column {
+        border-left: none;
+        border-top: 1px solid #eee;
+        padding-left: 0;
+        padding-top: 20px;
+        margin-top: 20px;
+    }
+
+    .left-column {
+        max-height: none;
+    }
+}
+
+@media (max-width: 768px) {
+    .calendar-header,
+    .calendar-row {
+        grid-template-columns: 70px repeat(7, 1fr);
+        font-size: 0.9rem;
+    }
+
+    .time-column, .day-column, .day-cell {
+        padding: 5px 3px;
+    }
+
+    .nav-btn {
+        padding: 6px 10px;
+        font-size: 12px;
+    }
+
+    #current-week-display {
+        font-size: 14px;
+        min-width: 150px;
+    }
+}
+
+@media (max-width: 600px) {
+    .container {
+        padding: 15px;
+    }
+}

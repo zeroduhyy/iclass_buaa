@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>北航iClass签到系统</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
+    <script>
+        let timer = null;
+        let courseSchedId = "";
+        let currentWeekOffset = 0; // 当前周偏移量，0表示本周
+
+        // 页面加载完成后初始化
+        document.addEventListener('DOMContentLoaded', function () {
+            // 将课程数据传递给JavaScript
+            const coursesData = JSON.parse('{{ courses|tojson|safe }}');
+            processCoursesData(coursesData);
+            renderCalendarView();
+        });
+
+        // 处理课程数据，按日期分组
+        function processCoursesData(courses) {
+            window.allCourses = courses;
+            window.coursesByWeek = {};
+
+            // 获取今天的日期和所在周的周一
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const currentDay = today.getDay(); // 0是周日，1-6是周一到周六
+            const currentWeekMonday = new Date(today);
+            currentWeekMonday.setDate(today.getDate() - (currentDay === 0 ? 6 : currentDay - 1));
+
+            // 找出最早和最晚的课程日期，用于确定需要显示多少周
+            let earliestDate = null;
+            let latestDate = null;
+
+            courses.forEach(course => {
+                const courseDate = new Date(course.date);
+                courseDate.setHours(0, 0, 0, 0);
+
+                if (!earliestDate || courseDate < earliestDate) {
+                    earliestDate = new Date(courseDate);
+                }
+
+                if (!latestDate || courseDate > latestDate) {
+                    latestDate = new Date(courseDate);
+                }
+            });
+
+            // 如果没有课程，直接返回
+            if (!earliestDate || !latestDate) return;
+
+            // 计算最早课程日期到当前周一的周数（可能为负数）
+            const earliestDiff = earliestDate.getTime() - currentWeekMonday.getTime();
+            const earliestWeeks = Math.floor(earliestDiff / (7 * 24 * 60 * 60 * 1000));
+
+            // 计算最晚课程日期到当前周一的周数
+            const latestDiff = latestDate.getTime() - currentWeekMonday.getTime();
+            const latestWeeks = Math.ceil(latestDiff / (7 * 24 * 60 * 60 * 1000));
+
+            // 计算需要显示的周数范围（从最早周到最晚周）
+            const minWeek = Math.min(0, earliestWeeks); // 确保包含本周(0)
+            const maxWeek = Math.max(0, latestWeeks);  // 确保包含本周(0)
+
+            // 创建每周的数据结构（相对于当前周的偏移量）
+            for (let weekOffset = minWeek; weekOffset <= maxWeek; weekOffset++) {
+                const weekStartDate = new Date(currentWeekMonday);
+                weekStartDate.setDate(currentWeekMonday.getDate() + (weekOffset * 7));
+
+                window.coursesByWeek[weekOffset] = {
+                    startDate: weekStartDate,
+                    endDate: new Date(weekStartDate),
+                    days: {}
+                };
+
+                // 设置这周的结束日期（周日）
+                window.coursesByWeek[weekOffset].endDate.setDate(weekStartDate.getDate() + 6);
+            }
+
+            // 将课程放入对应的周和日期
+            courses.forEach(course => {
+                const courseDate = new Date(course.date);
+                courseDate.setHours(0, 0, 0, 0);
+
+                // 计算课程日期与当前周一的周数差异
+                const courseDiff = courseDate.getTime() - currentWeekMonday.getTime();
+                const courseDays = Math.floor(courseDiff / (24 * 60 * 60 * 1000));
+                const weekOffset = Math.floor(courseDays / 7);
+
+                // 获取星期几（1-7对应周一到周日）
+                const dayOfWeek = courseDate.getDay() || 7; // 转换为1-7，周一到周日
+
+                // 如果这一天不存在，创建它
+                if (!window.coursesByWeek[weekOffset].days[dayOfWeek]) {
+                    window.coursesByWeek[weekOffset].days[dayOfWeek] = [];
+                }
+
+                // 添加课程到对应的日期
+                window.coursesByWeek[weekOffset].days[dayOfWeek].push({
+                    ...course,
+                    signed: course.fullRecord && course.fullRecord.signStatus === '1'
+                });
+            });
+
+            // 将当前周偏移量设为0（本周）
+            currentWeekOffset = 0;
+        }
+
+        // 渲染日历视图
+        function renderCalendarView() {
+            const weekData = window.coursesByWeek[currentWeekOffset];
+
+            // 更新周信息显示 - 即使没有课程也显示
+            updateWeekDisplay(true);
+
+            // 创建日历表格
+            let calendarHTML = `
+                <div class="calendar-header">
+                    <div class="time-column">时间/星期</div>
+                    <div class="day-column">周一</div>
+                    <div class="day-column">周二</div>
+                    <div class="day-column">周三</div>
+                    <div class="day-column">周四</div>
+                    <div class="day-column">周五</div>
+                    <div class="day-column">周六</div>
+                    <div class="day-column">周日</div>
+                </div>
+            `;
+
+            // 计算当前周的日期（无论是否有课程）
+            const today = new Date();
+            const startOfCurrentWeek = new Date(today);
+            const currentDay = today.getDay(); // 0是周日，1-6是周一到周六
+            startOfCurrentWeek.setDate(today.getDate() - (currentDay === 0 ? 6 : currentDay - 1));
+
+            // 计算所选周的开始日期
+            const startOfSelectedWeek = new Date(startOfCurrentWeek);
+            startOfSelectedWeek.setDate(startOfCurrentWeek.getDate() + (currentWeekOffset * 7));
+
+            // 时间段定义
+            const timeSlots = [
+                { label: "上午", start: 8, end: 12 },
+                { label: "下午", start: 13, end: 17 },
+                { label: "晚上", start: 18, end: 22 }
+            ];
+
+            // 为每个时间段创建一行
+            timeSlots.forEach(slot => {
+                calendarHTML += `
+                    <div class="calendar-row">
+                        <div class="time-column">${slot.label}<br>${slot.start}:00-${slot.end}:00</div>
+                `;
+
+                // 为每天创建单元格
+                for (let day = 1; day <= 7; day++) {
+                    // 计算当前单元格对应的日期
+                    const cellDate = new Date(startOfSelectedWeek);
+                    cellDate.setDate(startOfSelectedWeek.getDate() + day - 1);
+
+                    // 检查是否是今天
+                    const isToday = cellDate.toDateString() === today.toDateString();
+                    const todayClass = isToday ? 'today-cell' : '';
+
+                    // 添加日期标签
+                    const dateLabel = `${cellDate.getMonth() + 1}/${cellDate.getDate()}`;
+
+                    calendarHTML += `<div class="day-cell ${todayClass}" data-day="${day}">
+                        <div class="date-label">${dateLabel}</div>`;
+
+                    // 检查这一天是否有课程
+                    if (weekData && weekData.days[day]) {
+                        // 筛选出这个时间段的课程
+                        const dayCourses = weekData.days[day].filter(course => {
+                            if (course.fullRecord && course.fullRecord.classBeginTime) {
+                                const courseHour = parseInt(course.fullRecord.classBeginTime.split(' ')[1].split(':')[0]);
+                                return courseHour >= slot.start && courseHour < slot.end;
+                            }
+                            return false;
+                        });
+
+                        // 渲染课程卡片
+                        dayCourses.forEach(course => {
+                            const signedClass = course.signed ? 'course-signed' : 'course-unsigned';
+                            calendarHTML += `
+                                <div class="course-card ${signedClass}"
+                                     data-course-id="${course.courseSchedId}"
+                                     onclick="selectCourse('${course.courseSchedId}', '${course.name}', '${course.date}', ${course.signed})">
+                                    <div class="course-name">${course.name}</div>
+                                    <div class="course-time">${formatTimeFromFullRecord(course.fullRecord)}</div>
+                                </div>
+                            `;
+                        });
+                    }
+
+                    calendarHTML += `</div>`;
+                }
+
+                calendarHTML += `</div>`;
+            });
+
+            document.getElementById('calendar-grid').innerHTML = calendarHTML;
+        }
+
+        // 从课程完整记录中提取并格式化时间
+        function formatTimeFromFullRecord(record) {
+            if (!record) return "";
+            let beginTime = record.classBeginTime ? record.classBeginTime.split(' ')[1] : "";
+            let endTime = record.classEndTime ? record.classEndTime.split(' ')[1] : "";
+            return beginTime + " - " + endTime;
+        }
+
+        // 更新周信息显示
+        function updateWeekDisplay(forceDisplay = false) {
+            let weekText = "";
+
+            // 计算当前周的日期
+            const today = new Date();
+            const currentDay = today.getDay(); // 0是周日，1-6是周一到周六
+            const startOfWeek = new Date(today);
+            // 调整到本周的周一
+            startOfWeek.setDate(today.getDate() - (currentDay === 0 ? 6 : currentDay - 1));
+
+            // 计算所选周的开始和结束日期
+            const startDate = new Date(startOfWeek);
+            startDate.setDate(startOfWeek.getDate() + (currentWeekOffset * 7));
+            const endDate = new Date(startDate);
+            endDate.setDate(startDate.getDate() + 6);
+
+            const startDateStr = formatDate(startDate);
+            const endDateStr = formatDate(endDate);
+            weekText = `${startDateStr} 至 ${endDateStr}`;
+
+            // 判断是否为本周
+            if (currentWeekOffset === 0) {
+                weekText += " (本周)";
+            } else if (currentWeekOffset < 0) {
+                weekText += ` (${Math.abs(currentWeekOffset)}周前)`;
+            } else {
+                weekText += ` (${currentWeekOffset}周后)`;
+            }
+
+            // 检查是否有课程
+            const weekInfo = window.coursesByWeek[currentWeekOffset];
+            if (!weekInfo && !forceDisplay) {
+                weekText += " - 无课程";
+            }
+
+            document.getElementById('current-week-display').textContent = weekText;
+        }
+
+        // 切换到上一周
+        function previousWeek() {
+            currentWeekOffset--;
+            renderCalendarView();
+        }
+
+        // 切换到下一周
+        function nextWeek() {
+            currentWeekOffset++;
+            renderCalendarView();
+        }
+
+        // 返回本周
+        function currentWeek() {
+            currentWeekOffset = 0;
+            renderCalendarView();
+        }
+
+        // 选择课程
+        function selectCourse(id, name, date, signed) {
+            // 移除其他课程的选中状态
+            document.querySelectorAll('.course-card.selected').forEach(card => {
+                card.classList.remove('selected');
+            });
+
+            // 将当前课程添加选中状态
+            document.querySelector(`.course-card[data-course-id="${id}"]`).classList.add('selected');
+
+            // 更新选中课程的信息
+            courseSchedId = id;
+            document.getElementById('selected-course-name').textContent = name;
+            document.getElementById('selected-course-date').textContent = formatDateForDisplay(date);
+            document.getElementById('selected-course-status').textContent = signed ? "已签到" : "未签到";
+            document.getElementById('selected-course-status').className = signed ? "status-signed" : "status-unsigned";
+
+            // 显示课程信息区域
+            document.getElementById('selected-course-info').style.display = 'block';
+        }
+
+        // 格式化日期用于显示
+        function formatDateForDisplay(dateStr) {
+            const date = new Date(dateStr);
+            // 使用与processCoursesData相同的星期几转换逻辑：将0(周日)转换为7
+            const dayIndex = date.getDay() || 7; // 转换为1-7，周一到周日
+            const weekdayNames = ["", "周一", "周二", "周三", "周四", "周五", "周六", "周日"];
+            const weekday = weekdayNames[dayIndex];
+            return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日 ${weekday}`;
+        }
+
+        // 简单格式化日期
+        function formatDate(date) {
+            return `${date.getMonth() + 1}月${date.getDate()}日`;
+        }
+
+        // 生成二维码
+        function startGenerating() {
+            if (!courseSchedId) {
+                alert('请先选择课程');
+                return;
+            }
+
+            // 开始生成二维码，每隔2秒更新一次
+            if (timer) clearInterval(timer);  // 清除之前的定时器
+            generateQRCode();  // 初始化生成二维码
+            timer = setInterval(generateQRCode, 2000);  // 每2秒更新一次二维码
+
+            // 显示正在更新的提示
+            document.getElementById('qrcode-status').style.display = 'block';
+        }
+
+        // 生成二维码并更新显示
+        function generateQRCode() {
+            const timestamp = Date.now();
+
+            fetch('/generate_qr', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ courseSchedId, timestamp })
+            })
+                .then(response => response.json())
+                .then(data => {
+                    const qrContainer = document.getElementById('qrcode');
+                    qrContainer.innerHTML = ''; // 清空旧二维码
+
+                    // 尝试生成二维码
+                    try {
+                        QRCode.toCanvas(data.qrUrl, { width: 300, margin: 2 }, function (err, canvas) {
+                            if (err) {
+                                qrContainer.innerHTML = "<p class='error-message'>二维码生成失败</p>";
+                            } else {
+                                qrContainer.appendChild(canvas);
+                            }
+                        });
+                    } catch (ex) {
+                        qrContainer.innerHTML = "<p class='error-message'>二维码生成异常</p>";
+                    }
+
+                    // 更新时间显示
+                    const timeDisplay = document.getElementById('timestamp');
+                    const date = new Date(timestamp);
+                    timeDisplay.textContent = `当前时间: ${date.toLocaleString()}`;
+                })
+                .catch(error => {
+                    document.getElementById('qrcode').innerHTML = "<p class='error-message'>请求失败</p>";
+                });
+        }
+    </script>
+</head>
+
+<body>
+    <div class="container">
+        <header class="app-header">
+            <h2>北航iClass签到系统</h2>
+            <div class="user-info">
+                <span>欢迎您，{{ user_name }}</span>
+                <a href="/logout" class="logout-btn">退出登录</a>
+            </div>
+        </header>
+
+        <div class="calendar-container">
+            <div class="week-navigation">
+                <button class="nav-btn" onclick="previousWeek()">上一周</button>
+                <span id="current-week-display">加载中...</span>
+                <button class="nav-btn" onclick="nextWeek()">下一周</button>
+                <button class="nav-btn current-btn" onclick="currentWeek()">本周</button>
+            </div>
+
+            <div id="calendar-grid" class="calendar-grid">
+                <!-- 这里将由JavaScript动态生成日历视图 -->
+            </div>
+        </div>
+
+        <div class="qrcode-section">
+            <div id="selected-course-info" class="selected-course-info" style="display: none;">
+                <div class="info-header">已选课程信息</div>
+                <div class="info-content">
+                    <p><strong>课程名称:</strong> <span id="selected-course-name"></span></p>
+                    <p><strong>上课时间:</strong> <span id="selected-course-date"></span></p>
+                    <p><strong>签到状态:</strong> <span id="selected-course-status"></span></p>
+                </div>
+                <button class="generate-btn" onclick="startGenerating()">生成实时签到二维码</button>
+            </div>
+
+            <div class="qrcode-container">
+                <h3>签到二维码</h3>
+                <div id="qrcode-status" style="display: none;" class="update-notice">二维码自动更新中，每2秒刷新一次</div>
+                <div id="qrcode" class="qrcode-display"></div>
+                <div id="timestamp" class="timestamp-display">请先选择课程并生成二维码</div>
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>
