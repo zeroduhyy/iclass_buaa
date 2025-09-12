@@ -19,8 +19,8 @@ logger = logging.getLogger("auth")
 class SSOAuth:
     def __init__(self, username=None, password=None):
         """Initialize the SSO authentication handler."""
-        self.username = username or config.USERNAME
-        self.password = password or config.PASSWORD
+        self.username = username
+        self.password = password
         self.session = requests.Session()
         self.session_id = None
         self.user_info = None
