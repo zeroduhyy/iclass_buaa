@@ -19,7 +19,7 @@ body {
     justify-content: space-between;
     align-items: center;
     background: linear-gradient(135deg, #2b5876 0%, #4e4376 100%);
-    color: white;
+    color: rgb(214, 193, 193);
     padding: 15px 20px;
     border-radius: 10px;
     margin-bottom: 20px;
@@ -30,6 +30,7 @@ body {
     margin: 0;
     font-size: 1.5rem;
     font-weight: 600;
+    color: #f0f0f0;
 }
 
 .user-info {
