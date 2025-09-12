@@ -5,9 +5,17 @@ Handles login and session management.
 
 import requests
 from bs4 import BeautifulSoup
-import config
 import logging
 import time
+
+
+# from config.py
+
+SSO_LOGIN_URL = "https://sso.buaa.edu.cn/login"
+ICLASS_SERVICE_URL = "https://iclass.buaa.edu.cn:8346/"
+ICLASS_API_BASE = "https://iclass.buaa.edu.cn:8346/app"
+ICLASS_QR_BASE = "http://iclass.buaa.edu.cn:8081/app/course/stu_scan_sign.action"
+
 
 # Set up logging
 logging.basicConfig(
@@ -39,8 +47,8 @@ class SSOAuth:
             # Step 1: Get the login page to obtain the execution parameter
             logger.info("Fetching SSO login page...")
             response = self.session.get(
-                config.SSO_LOGIN_URL,
-                params={"service": config.ICLASS_SERVICE_URL},
+                SSO_LOGIN_URL,
+                params={"service": ICLASS_SERVICE_URL},
                 allow_redirects=True,
             )
 
@@ -67,13 +75,13 @@ class SSOAuth:
 
             headers = {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
-                "Referer": config.SSO_LOGIN_URL,
+                "Referer": SSO_LOGIN_URL,
                 "Content-Type": "application/x-www-form-urlencoded",
             }
 
             # IMPORTANT: Don't follow redirects immediately
             response = self.session.post(
-                config.SSO_LOGIN_URL,
+                SSO_LOGIN_URL,
                 headers=headers,
                 data=login_data,
                 allow_redirects=False,
@@ -112,7 +120,7 @@ class SSOAuth:
 
                         logger.info("Submitting 'Ignore Once' request...")
                         response = self.session.post(
-                            config.SSO_LOGIN_URL,
+                            SSO_LOGIN_URL,
                             headers=headers,
                             data=continue_data,
                             allow_redirects=False,
@@ -183,7 +191,7 @@ class SSOAuth:
     def _get_user_info(self):
         try:
             logger.info("Fetching user info from iClass API...")
-            login_api = f"{config.ICLASS_API_BASE}/user/login.action"
+            login_api = f"{ICLASS_API_BASE}/user/login.action"
             params = {
                 "phone": self.username,  # 直接用学号
                 "password": "",
