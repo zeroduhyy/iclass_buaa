@@ -6,6 +6,10 @@ from simple_sso import SSOAuth  # 学长的模块
 app = Flask(__name__)
 app.secret_key = "iclass_signin_secret_key"  # 添加密钥用于session
 
+# 注意：SSL 验证将基于用户在登录表单的选择（每个会话独立）。
+# 这里保留一个安全的默认值（True），但实际使用以 session['verify_ssl'] 为准。
+DEFAULT_VERIFY_SSL = True
+
 
 # 接口URL定义
 class URL:
@@ -34,7 +38,7 @@ class Header(Dict):
             self.update(params)
 
 
-def get_user_info(student_id: str):
+def get_user_info(student_id: str, verify: bool = True):
     """通过学号获取userId和sessionId"""
     params = {
         "password": "",
@@ -44,7 +48,7 @@ def get_user_info(student_id: str):
         "verificationUrl": "",
     }
 
-    response = requests.get(url=URL.loginUrl, params=params, headers=Header())
+    response = requests.get(url=URL.loginUrl, params=params, headers=Header(), verify=verify)
 
     if response.status_code != 200:
         return None, None, None
@@ -60,12 +64,12 @@ def get_user_info(student_id: str):
     return user_id, session_id, user_name
 
 
-def get_current_semester(user_id: str, session_id: str):
+def get_current_semester(user_id: str, session_id: str, verify: bool = True):
     """获取当前学期信息"""
     params = {"userId": user_id, "type": "2"}
     headers = Header({"sessionId": session_id})
 
-    response = requests.get(url=URL.semesterUrl, params=params, headers=headers)
+    response = requests.get(url=URL.semesterUrl, params=params, headers=headers, verify=verify)
 
     if response.status_code != 200:
         return None
@@ -90,12 +94,12 @@ def get_current_semester(user_id: str, session_id: str):
     return current_semester
 
 
-def get_courses(user_id: str, session_id: str, semester_code: str):
+def get_courses(user_id: str, session_id: str, semester_code: str, verify: bool = True):
     """获取用户的课程列表"""
     params = {"user_type": "1", "id": user_id, "xq_code": semester_code}
     headers = Header({"sessionId": session_id})
 
-    response = requests.get(url=URL.courseUrl, params=params, headers=headers)
+    response = requests.get(url=URL.courseUrl, params=params, headers=headers, verify=verify)
 
     if response.status_code != 200:
         return []
@@ -175,7 +179,9 @@ def courses():
 
     # 安全获取 cookies
     cookies = session.get("cookies", {})
-    sso_auth = SSOAuth()
+    # 根据用户登录时的选择确定是否验证证书（默认为 True）
+    verify_ssl = session.get("verify_ssl", DEFAULT_VERIFY_SSL)
+    sso_auth = SSOAuth(verify_ssl=verify_ssl)
     sso_auth.session.cookies.update(cookies)
     sso_auth.session_id = session.get("session_id")
 
@@ -194,33 +200,59 @@ def login():
     password = request.form.get("password")  # 如果登录需要密码
     if not student_id or not password:
         return render_template(
-            "login.html", error="请输入学号和密码", student_id=student_id or ""
+            "login.html",
+            error="请输入学号和密码",
+            student_id=student_id or "",
+            password=password or "",
         )
 
+    # 读取用户在表单中对 SSL 验证的选择（勾选表示验证）
+    verify_ssl = True if request.form.get("verify_ssl") else False
+    # 保存到会话以便后续页面使用相同选择
+    session["verify_ssl"] = verify_ssl
+
     # 使用 SSO 登录
-    sso_auth = SSOAuth(username=student_id, password=password)
+    sso_auth = SSOAuth(username=student_id, password=password, verify_ssl=verify_ssl)
     if not sso_auth.login():
+        # 如果 SSOAuth 提供了更详细的错误信息，则显示之
+        error_msg = getattr(sso_auth, "last_error", None) or "登录失败，请检查学号或密码"
         return render_template(
-            "login.html", error="登录失败，请检查学号或密码", student_id=student_id
+            "login.html", error=error_msg, student_id=student_id, password=password or ""
         )
 
     # 获取用户信息
     user_info = sso_auth.user_info
     if not user_info:
-        return render_template("login.html", error="获取用户信息失败")
+        error_msg = getattr(sso_auth, "last_error", None) or "获取用户信息失败"
+        return render_template(
+            "login.html", error=error_msg, student_id=student_id, password=password or ""
+        )
 
     user_id = user_info.get("id")
     user_name = user_info.get("realName", student_id)
 
-    # 获取当前学期
-    semester_code = get_current_semester(user_id, sso_auth.session_id)
+    # 获取当前学期（遵循用户的 verify_ssl 选择）
+    semester_code = get_current_semester(user_id, sso_auth.session_id, verify=verify_ssl)
     if not semester_code:
-        return render_template("login.html", error="获取学期信息失败")
+        # 提供更具体的提示（例如证书/网络/接口问题）
+        error_msg = (
+            getattr(sso_auth, "last_error", None)
+            or "获取学期信息失败：可能是 iClass 接口不可用或网络/证书问题。"
+        )
+        return render_template(
+            "login.html", error=error_msg, student_id=student_id, password=password or ""
+        )
 
-    # 获取课程列表
-    courses = get_courses(user_id, sso_auth.session_id, semester_code)
+    # 获取课程列表（遵循用户的 verify_ssl 选择）
+    courses = get_courses(user_id, sso_auth.session_id, semester_code, verify=verify_ssl)
     if not courses:
-        return render_template("login.html", error="未找到课程信息")
+        error_msg = (
+            getattr(sso_auth, "last_error", None)
+            or "未找到课程信息：请确认账号是否有课程或稍后重试。"
+        )
+        return render_template(
+            "login.html", error=error_msg, student_id=student_id, password=password or ""
+        )
 
     # 保存到 session
     session["user_id"] = user_id

@@ -50,7 +50,8 @@
             font-size: 16px;
             cursor: pointer;
             transition: background-color 0.3s;
-            width: 100%;
+            /* 默认不强制占满宽度，使用 .small 类可生成小按钮 */
+            width: auto;
         }
 
         .login-btn:hover {
@@ -63,6 +64,35 @@
             padding: 10px;
             background-color: #fce8e6;
             border-radius: 5px;
+        }
+        /* 新增：右对齐的表单操作区域（SSL 选择 + 登录按钮） */
+        .form-actions {
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+            gap: 12px;
+            margin-top: 10px;
+        }
+
+        .ssl-checkbox {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px; /* 字体调小 */
+            color: #555;
+        }
+
+        /* 恢复登录按钮为原来的全宽/原始大小 */
+        .login-btn {
+            background-color: #4285f4;
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            width: 100%;
         }
     </style>
 </head>
@@ -81,7 +111,7 @@
 
             <div class="form-group">
                 <label for="password">请输入密码</label>
-                <input type="password" id="password" name="password" placeholder="你的 BUAA 密码" required>
+                <input type="password" id="password" name="password" value="{{ password or '' }}" placeholder="你的 BUAA 密码" autocomplete="current-password" required>
             </div>
 
             {% if error %}
@@ -90,11 +120,18 @@
             </div>
             {% endif %}
 
-            <button type="submit" class="login-btn">登录</button>
+            <div class="form-actions">
+                <div class="ssl-checkbox">
+                    <input type="checkbox" id="verify_ssl" name="verify_ssl" checked>
+                    <label for="verify_ssl">勾选以验证站点SSL证书</label>
+                </div>
+
+                <button type="submit" class="login-btn small">登录</button>
+            </div>
         </form>
 
         <p style="margin-top: 20px; color: #666; font-size: 14px;">
-            使用学号和 BUAA 密码登录
+            使用BUAA 学号和密码登录
         </p>
     </div>
 </body>
