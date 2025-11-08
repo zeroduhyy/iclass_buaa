@@ -322,8 +322,8 @@
 
         // 生成二维码并更新显示
         function generateQRCode() {
-            const timestamp = Date.now();
-
+            const timestamp = Date.now()+5*60000;
+            //延迟5min防止二维码失效
             fetch('/generate_qr', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
