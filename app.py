@@ -13,15 +13,15 @@ DEFAULT_VERIFY_SSL = True
 
 # 接口URL定义
 class URL:
-    loginUrl = "https://iclass.buaa.edu.cn:8346/app/user/login.action"
+    loginUrl = "https://iclass.buaa.edu.cn:8347/app/user/login.action"
     courseUrl = (
-        "https://iclass.buaa.edu.cn:8346/app/choosecourse/get_myall_course.action"
+        "https://iclass.buaa.edu.cn:8347/app/choosecourse/get_myall_course.action"
     )
     semesterUrl = (
-        "https://iclass.buaa.edu.cn:8346/app/course/get_base_school_year.action"
+        "https://iclass.buaa.edu.cn:8347/app/course/get_base_school_year.action"
     )
     courseInfoUrl = (
-        "https://iclass.buaa.edu.cn:8346/app/my/get_my_course_sign_detail.action"
+        "https://iclass.buaa.edu.cn:8347/app/my/get_my_course_sign_detail.action"
     )
 
 
