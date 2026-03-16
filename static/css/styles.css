@@ -348,6 +348,17 @@ h3 {
     border-left-color: #34c759;
 }
 
+.signed-locked {
+    background-color: #f0f2f5;
+    border-left-color: #a0a7b4;
+    opacity: 0.88;
+}
+
+.signed-locked .course-name,
+.signed-locked .course-time {
+    color: #6b7280;
+}
+
 .course-unsigned {
     background-color: #fff8e6;
     border-left-color: #ff9500;
@@ -501,6 +512,55 @@ h3 {
 
 .generate-btn:active {
     transform: translateY(1px);
+}
+
+.generate-btn:disabled {
+    background: #b8c0cc;
+    cursor: not-allowed;
+    box-shadow: none;
+    transform: none;
+}
+
+.generate-btn:disabled:hover {
+    transform: none;
+    box-shadow: none;
+}
+
+.action-buttons {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 15px;
+}
+
+.action-buttons .generate-btn {
+    margin-top: 0;
+}
+
+.sign-btn {
+    background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+}
+
+.sign-btn:hover {
+    background: linear-gradient(135deg, #0f8a80 0%, #32d572 100%);
+}
+
+.sign-result {
+    margin-top: 12px;
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 14px;
+    text-align: center;
+}
+
+.sign-success {
+    color: #0f7a3a;
+    background-color: #e8f7ef;
+}
+
+.sign-error {
+    color: #b00020;
+    background-color: #fdecef;
 }
 
 .error-message {

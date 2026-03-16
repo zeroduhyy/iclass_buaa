@@ -1,5 +1,6 @@
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session
 import requests
+import time
 from typing import Dict, List
 from simple_sso import SSOAuth  # 学长的模块
 
@@ -23,6 +24,8 @@ class URL:
     courseInfoUrl = (
         "https://iclass.buaa.edu.cn:8347/app/my/get_my_course_sign_detail.action"
     )
+    # 2026-03 起，扫码签到需走 8346 的 eschool 路径，并使用 POST
+    scanSignUrl = "https://iclass.buaa.edu.cn:8346/eschool/app/course/stu_scan_sign.action"
 
 
 class Header(Dict):
@@ -161,6 +164,15 @@ def get_courses_detail(
     return available_courses
 
 
+def get_authenticated_sso_from_session() -> SSOAuth:
+    """基于当前 Flask session 构建带登录态的 SSOAuth。"""
+    verify_ssl = session.get("verify_ssl", DEFAULT_VERIFY_SSL)
+    sso_auth = SSOAuth(verify_ssl=verify_ssl)
+    sso_auth.session.cookies.update(session.get("cookies", {}))
+    sso_auth.session_id = session.get("session_id")
+    return sso_auth
+
+
 @app.route("/")
 def login_page():
     """登录页面"""
@@ -177,13 +189,7 @@ def courses():
     if "user_id" not in session or "session_id" not in session:
         return redirect(url_for("login_page"))
 
-    # 安全获取 cookies
-    cookies = session.get("cookies", {})
-    # 根据用户登录时的选择确定是否验证证书（默认为 True）
-    verify_ssl = session.get("verify_ssl", DEFAULT_VERIFY_SSL)
-    sso_auth = SSOAuth(verify_ssl=verify_ssl)
-    sso_auth.session.cookies.update(cookies)
-    sso_auth.session_id = session.get("session_id")
+    sso_auth = get_authenticated_sso_from_session()
 
     courses_detail = get_courses_detail(
         sso_auth.session, session["user_id"], session["session_id"], session["courses"]
@@ -269,10 +275,45 @@ def login():
 def generate_qr():
     """生成二维码的API"""
     course_sched_id = request.json.get("courseSchedId")
-    timestamp = request.json.get("timestamp", 0)
-    url = f"http://iclass.buaa.edu.cn:8081/app/course/stu_scan_sign.action?courseSchedId={course_sched_id}&timestamp={timestamp}"
+    # 兼容前端传值；未传时使用当前毫秒时间戳
+    timestamp = request.json.get("timestamp") or int(time.time() * 1000)
+    # 新版签到二维码应指向 8346 + /eschool/app/course/stu_scan_sign.action
+    url = (
+        f"{URL.scanSignUrl}?courseSchedId={course_sched_id}&timestamp={timestamp}"
+    )
 
     return jsonify({"qrUrl": url})
+
+
+@app.route("/sign_now", methods=["POST"])
+def sign_now():
+    """直接调用新版签到接口（无需扫码）。"""
+    if "user_id" not in session or "session_id" not in session:
+        return jsonify({"STATUS": "1", "ERRMSG": "未登录，请先登录后重试"}), 401
+
+    payload = request.get_json(silent=True) or {}
+    course_sched_id = str(payload.get("courseSchedId", "")).strip()
+    if not course_sched_id:
+        return jsonify({"STATUS": "1", "ERRMSG": "courseSchedId 不能为空"}), 400
+
+    timestamp = payload.get("timestamp") or int(time.time() * 1000)
+    user_id = session["user_id"]
+    session_id = session["session_id"]
+
+    sign_url = f"{URL.scanSignUrl}?courseSchedId={course_sched_id}&timestamp={timestamp}"
+    headers = Header({"sessionId": session_id})
+    params = {"id": user_id}
+
+    sso_auth = get_authenticated_sso_from_session()
+    try:
+        resp = sso_auth.session.post(sign_url, params=params, headers=headers, timeout=15)
+        data = resp.json()
+    except requests.RequestException as exc:
+        return jsonify({"STATUS": "1", "ERRMSG": f"签到请求失败: {exc}"}), 502
+    except ValueError:
+        return jsonify({"STATUS": "1", "ERRMSG": "签到接口返回非 JSON"}), 502
+
+    return jsonify(data)
 
 
 @app.route("/logout")

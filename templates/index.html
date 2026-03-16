@@ -10,6 +10,7 @@
     <script>
         let timer = null;
         let courseSchedId = "";
+        let selectedCourseSigned = false;
         let currentWeekOffset = 0; // 当前周偏移量，0表示本周
 
         // 页面加载完成后初始化
@@ -18,6 +19,7 @@
             const coursesData = JSON.parse('{{ courses|tojson|safe }}');
             processCoursesData(coursesData);
             renderCalendarView();
+            updateSignButtonState();
         });
 
         // 处理课程数据，按日期分组
@@ -182,7 +184,7 @@
 
                         // 渲染课程卡片
                         dayCourses.forEach(course => {
-                            const signedClass = course.signed ? 'course-signed' : 'course-unsigned';
+                            const signedClass = course.signed ? 'course-signed signed-locked' : 'course-unsigned';
                             calendarHTML += `
                                 <div class="course-card ${signedClass}"
                                      data-course-id="${course.courseSchedId}"
@@ -280,13 +282,70 @@
 
             // 更新选中课程的信息
             courseSchedId = id;
+            selectedCourseSigned = !!signed;
             document.getElementById('selected-course-name').textContent = name;
             document.getElementById('selected-course-date').textContent = formatDateForDisplay(date);
             document.getElementById('selected-course-status').textContent = signed ? "已签到" : "未签到";
             document.getElementById('selected-course-status').className = signed ? "status-signed" : "status-unsigned";
+            updateSignButtonState();
+            document.getElementById('sign-result').style.display = 'none';
 
             // 显示课程信息区域
             document.getElementById('selected-course-info').style.display = 'block';
+        }
+
+        function updateSignButtonState() {
+            const btn = document.getElementById('sign-now-btn');
+            if (!btn) return;
+
+            if (!courseSchedId) {
+                btn.disabled = true;
+                btn.textContent = "直接签到";
+                return;
+            }
+
+            if (selectedCourseSigned) {
+                btn.disabled = true;
+                btn.textContent = "已签到";
+                return;
+            }
+
+            btn.disabled = false;
+            btn.textContent = "直接签到";
+        }
+
+        function markCourseAsSigned(targetCourseSchedId) {
+            const target = String(targetCourseSchedId);
+            if (window.allCourses) {
+                window.allCourses.forEach(course => {
+                    if (String(course.courseSchedId) === target) {
+                        course.signed = true;
+                        if (course.fullRecord) {
+                            course.fullRecord.signStatus = '1';
+                        }
+                    }
+                });
+            }
+
+            if (window.coursesByWeek) {
+                Object.values(window.coursesByWeek).forEach(week => {
+                    Object.values(week.days || {}).forEach(dayCourses => {
+                        dayCourses.forEach(course => {
+                            if (String(course.courseSchedId) === target) {
+                                course.signed = true;
+                                if (course.fullRecord) {
+                                    course.fullRecord.signStatus = '1';
+                                }
+                            }
+                        });
+                    });
+                });
+            }
+
+            document.querySelectorAll(`.course-card[data-course-id="${target}"]`).forEach(card => {
+                card.classList.remove('course-unsigned');
+                card.classList.add('course-signed', 'signed-locked');
+            });
         }
 
         // 格式化日期用于显示
@@ -322,8 +381,7 @@
 
         // 生成二维码并更新显示
         function generateQRCode() {
-            const timestamp = Date.now()+5*60000;
-            //延迟5min防止二维码失效
+            const timestamp = Date.now();
             fetch('/generate_qr', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -354,6 +412,54 @@
                 })
                 .catch(error => {
                     document.getElementById('qrcode').innerHTML = "<p class='error-message'>请求失败</p>";
+                });
+        }
+
+        // 直接签到（无需扫码）
+        function signNow() {
+            if (!courseSchedId) {
+                alert('请先选择课程');
+                return;
+            }
+            if (selectedCourseSigned) {
+                alert('该课程已签到，无需重复签到');
+                return;
+            }
+
+            const btn = document.getElementById('sign-now-btn');
+            btn.disabled = true;
+            btn.textContent = "签到中...";
+
+            fetch('/sign_now', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ courseSchedId, timestamp: Date.now() })
+            })
+                .then(response => response.json())
+                .then(data => {
+                    const result = document.getElementById('sign-result');
+                    result.style.display = 'block';
+
+                    if (data.STATUS === "0") {
+                        result.textContent = "签到成功";
+                        result.className = "sign-result sign-success";
+                        document.getElementById('selected-course-status').textContent = "已签到";
+                        document.getElementById('selected-course-status').className = "status-signed";
+                        selectedCourseSigned = true;
+                        markCourseAsSigned(courseSchedId);
+                    } else {
+                        result.textContent = `签到失败: ${data.ERRMSG || "未知错误"}`;
+                        result.className = "sign-result sign-error";
+                    }
+                })
+                .catch(() => {
+                    const result = document.getElementById('sign-result');
+                    result.style.display = 'block';
+                    result.textContent = "签到请求失败，请稍后重试";
+                    result.className = "sign-result sign-error";
+                })
+                .finally(() => {
+                    updateSignButtonState();
                 });
         }
     </script>
@@ -390,7 +496,11 @@
                     <p><strong>上课时间:</strong> <span id="selected-course-date"></span></p>
                     <p><strong>签到状态:</strong> <span id="selected-course-status"></span></p>
                 </div>
-                <button class="generate-btn" onclick="startGenerating()">生成实时签到二维码</button>
+                <div class="action-buttons">
+                    <button id="sign-now-btn" class="generate-btn sign-btn" onclick="signNow()">直接签到</button>
+                    <button class="generate-btn" onclick="startGenerating()">生成实时签到二维码</button>
+                </div>
+                <div id="sign-result" class="sign-result" style="display: none;"></div>
             </div>
 
             <div class="qrcode-container">
