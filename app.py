@@ -1,7 +1,7 @@
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session
 import requests
 import time
-from typing import Dict, List
+from typing import Any, Dict, List, Optional
 from simple_sso import SSOAuth  # 学长的模块
 
 app = Flask(__name__)
@@ -29,7 +29,7 @@ class URL:
 
 
 class Header(Dict):
-    def __init__(self, params: Dict = None):
+    def __init__(self, params: Optional[Dict[str, Any]] = None):
         super().__init__(
             {
                 "Accept": "application/json",
@@ -236,9 +236,16 @@ def login():
 
     user_id = user_info.get("id")
     user_name = user_info.get("realName", student_id)
+    session_id = sso_auth.session_id
+
+    if not user_id or not session_id:
+        error_msg = getattr(sso_auth, "last_error", None) or "登录成功但未获取到完整会话信息"
+        return render_template(
+            "login.html", error=error_msg, student_id=student_id, password=password or ""
+        )
 
     # 获取当前学期（遵循用户的 verify_ssl 选择）
-    semester_code = get_current_semester(user_id, sso_auth.session_id, verify=verify_ssl)
+    semester_code = get_current_semester(user_id, session_id, verify=verify_ssl)
     if not semester_code:
         # 提供更具体的提示（例如证书/网络/接口问题）
         error_msg = (
@@ -250,19 +257,14 @@ def login():
         )
 
     # 获取课程列表（遵循用户的 verify_ssl 选择）
-    courses = get_courses(user_id, sso_auth.session_id, semester_code, verify=verify_ssl)
+    courses = get_courses(user_id, session_id, semester_code, verify=verify_ssl)
+    # 允许无课程用户登录，便于开发时检查页面 UI。
     if not courses:
-        error_msg = (
-            getattr(sso_auth, "last_error", None)
-            or "未找到课程信息：请确认账号是否有课程或稍后重试。"
-        )
-        return render_template(
-            "login.html", error=error_msg, student_id=student_id, password=password or ""
-        )
+        courses = []
 
     # 保存到 session
     session["user_id"] = user_id
-    session["session_id"] = sso_auth.session_id
+    session["session_id"] = session_id
     session["user_name"] = user_name
     session["student_id"] = student_id
     session["courses"] = courses
@@ -274,9 +276,10 @@ def login():
 @app.route("/generate_qr", methods=["POST"])
 def generate_qr():
     """生成二维码的API"""
-    course_sched_id = request.json.get("courseSchedId")
+    payload = request.get_json(silent=True) or {}
+    course_sched_id = payload.get("courseSchedId")
     # 兼容前端传值；未传时使用当前毫秒时间戳
-    timestamp = request.json.get("timestamp") or int(time.time() * 1000)
+    timestamp = payload.get("timestamp") or int(time.time() * 1000)
     # 新版签到二维码应指向 8346 + /eschool/app/course/stu_scan_sign.action
     url = (
         f"{URL.scanSignUrl}?courseSchedId={course_sched_id}&timestamp={timestamp}"

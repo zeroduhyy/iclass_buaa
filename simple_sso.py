@@ -43,8 +43,8 @@ class SSOAuth:
         if not verify_ssl:
            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-        self.session_id = None
-        self.user_info = None
+        self.session_id: str | None = None
+        self.user_info: dict | None = None
         # 最近一次错误信息，供调用者展示
         self.last_error = None
 
@@ -70,7 +70,8 @@ class SSOAuth:
 
             # Parse the login page to get the execution parameter
             soup = BeautifulSoup(response.text, "html.parser")
-            execution = soup.find("input", {"name": "execution"}).get("value")
+            execution_input = soup.find("input", {"name": "execution"})
+            execution = execution_input.get("value") if execution_input else None
 
             if not execution:
                 self.last_error = "无法从 SSO 登录页面解析必要参数（execution）"
@@ -119,6 +120,10 @@ class SSOAuth:
 
                     if execution_input:
                         execution_val = execution_input.get("value")
+                        if not execution_val:
+                            self.last_error = "continue 表单缺少 execution 值"
+                            logger.error("Continue form execution value is empty")
+                            return False
                         logger.info(
                             f"Found execution value for continue form: {execution_val[:20]}..."
                         )
@@ -150,6 +155,10 @@ class SSOAuth:
                         # Follow the redirect chain from this point
                         if response.status_code in (301, 302, 303, 307, 308):
                             redirect_url = response.headers.get("Location")
+                            if not redirect_url:
+                                self.last_error = "忽略提示后未收到重定向地址"
+                                logger.error("Missing redirect location after ignore flow")
+                                return False
                             logger.info(f"Redirecting to: {redirect_url}")
 
                             # Follow all redirects automatically now
@@ -187,6 +196,10 @@ class SSOAuth:
             # If not 401, follow normal redirect flow
             elif response.status_code in (301, 302, 303, 307, 308):
                 redirect_url = response.headers.get("Location")
+                if not redirect_url:
+                    self.last_error = "登录跳转缺少重定向地址"
+                    logger.error("Missing redirect location after login")
+                    return False
                 logger.info(f"Redirecting to: {redirect_url}")
 
                 # Follow the redirect
@@ -231,9 +244,15 @@ class SSOAuth:
             if response.status_code == 200:
                 user_data = response.json()
                 if user_data.get("STATUS") == "0":
-                    self.user_info = user_data.get("result", {})
-                    self.session_id = self.user_info.get("sessionId")
-                    logger.info(f"Got user info for: {self.user_info.get('realName')}")
+                    result = user_data.get("result")
+                    if not isinstance(result, dict):
+                        self.last_error = f"iClass API 返回的用户信息格式异常: {user_data}"
+                        logger.error(f"Unexpected user info result: {user_data}")
+                        return False
+
+                    self.user_info = result
+                    self.session_id = result.get("sessionId")
+                    logger.info(f"Got user info for: {result.get('realName')}")
                     return True
                 else:
                     self.last_error = f"iClass API 返回错误: {user_data}"
