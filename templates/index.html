@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
     <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
     <script>
+        let IS_VPN_MODE = false;
         let timer = null;
         let courseSchedId = "";
         let selectedCourseSigned = false;
@@ -15,6 +16,8 @@
 
         // 页面加载完成后初始化
         document.addEventListener('DOMContentLoaded', function () {
+            IS_VPN_MODE = document.body?.dataset?.useVpn === '1';
+
             // 将课程数据传递给JavaScript
             const coursesData = JSON.parse('{{ courses|tojson|safe }}');
             processCoursesData(coursesData);
@@ -365,6 +368,11 @@
 
         // 生成二维码
         function startGenerating() {
+            if (IS_VPN_MODE) {
+                alert('VPN 模式下不支持二维码签到');
+                return;
+            }
+
             if (!courseSchedId) {
                 alert('请先选择课程');
                 return;
@@ -381,6 +389,10 @@
 
         // 生成二维码并更新显示
         function generateQRCode() {
+            if (IS_VPN_MODE) {
+                return;
+            }
+
             const timestamp = Date.now();
             fetch('/generate_qr', {
                 method: 'POST',
@@ -465,12 +477,15 @@
     </script>
 </head>
 
-<body>
+<body data-use-vpn="{{ '1' if use_vpn else '0' }}">
     <div class="container">
         <header class="app-header">
             <h2>北航iClass签到系统</h2>
             <div class="user-info">
                 <span>欢迎您，{{ user_name }}</span>
+                <span class="connection-indicator {% if use_vpn %}mode-vpn{% else %}mode-direct{% endif %}">
+                    当前连接：{% if use_vpn %}VPN{% else %}直连{% endif %}
+                </span>
                 <a href="/logout" class="logout-btn">退出登录</a>
             </div>
         </header>
@@ -498,16 +513,20 @@
                 </div>
                 <div class="action-buttons">
                     <button id="sign-now-btn" class="generate-btn sign-btn" onclick="signNow()">直接签到</button>
-                    <button class="generate-btn" onclick="startGenerating()">生成实时签到二维码</button>
+                    <button class="generate-btn" onclick="startGenerating()" {% if use_vpn %}disabled title="VPN 模式暂不支持二维码签到"{% endif %}>生成实时签到二维码</button>
                 </div>
                 <div id="sign-result" class="sign-result" style="display: none;"></div>
             </div>
 
             <div class="qrcode-container">
                 <h3>签到二维码</h3>
+                {% if use_vpn %}
+                <div class="vpn-unavailable-message">VPN 模式下不支持二维码签到，请使用“直接签到”。</div>
+                {% else %}
                 <div id="qrcode-status" style="display: none;" class="update-notice">二维码自动更新中，每2秒刷新一次</div>
                 <div id="qrcode" class="qrcode-display"></div>
                 <div id="timestamp" class="timestamp-display">请先选择课程并生成二维码</div>
+                {% endif %}
             </div>
         </div>
     </div>

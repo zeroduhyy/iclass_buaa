@@ -70,6 +70,7 @@
             display: flex;
             justify-content: flex-end;
             align-items: center;
+            flex-wrap: wrap;
             gap: 12px;
             margin-top: 10px;
         }
@@ -82,6 +83,13 @@
             color: #555;
         }
 
+        .toggle-group {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 8px;
+        }
+
         /* 恢复登录按钮为原来的全宽/原始大小 */
         .login-btn {
             background-color: #4285f4;
@@ -92,7 +100,28 @@
             font-size: 16px;
             cursor: pointer;
             transition: background-color 0.3s;
-            width: 100%;
+            width: auto;
+            min-width: 110px;
+            flex: 0 0 auto;
+        }
+
+        @media (max-width: 600px) {
+            .login-container {
+                margin: 24px 12px;
+                padding: 20px;
+            }
+
+            .form-actions {
+                justify-content: stretch;
+            }
+
+            .toggle-group {
+                width: 100%;
+            }
+
+            .login-btn {
+                width: 100%;
+            }
         }
     </style>
 </head>
@@ -121,9 +150,15 @@
             {% endif %}
 
             <div class="form-actions">
-                <div class="ssl-checkbox">
-                    <input type="checkbox" id="verify_ssl" name="verify_ssl" checked>
-                    <label for="verify_ssl">勾选以验证站点SSL证书</label>
+                <div class="toggle-group">
+                    <div class="ssl-checkbox">
+                        <input type="checkbox" id="verify_ssl" name="verify_ssl" {% if verify_ssl is not defined or verify_ssl %}checked{% endif %}>
+                        <label for="verify_ssl">勾选以验证站点SSL证书</label>
+                    </div>
+                    <div class="ssl-checkbox">
+                        <input type="checkbox" id="use_vpn" name="use_vpn" {% if use_vpn %}checked{% endif %}>
+                        <label for="use_vpn">通过 VPN 入口访问</label>
+                    </div>
                 </div>
 
                 <button type="submit" class="login-btn small">登录</button>

@@ -15,6 +15,9 @@ import urllib3
 SSO_LOGIN_URL = "https://sso.buaa.edu.cn/login"
 ICLASS_SERVICE_URL = "https://iclass.buaa.edu.cn:8346/"
 ICLASS_API_BASE = "https://iclass.buaa.edu.cn:8347/app"
+VPN_BASE = "https://d.buaa.edu.cn/https-{port}/77726476706e69737468656265737421f9f44d9d342326526b0988e29d51367ba018"
+# TODO: I believe this is unnecessary
+VPN_CAS_LOGIN_URL = "https://d.buaa.edu.cn/https/77726476706e69737468656265737421e3e44ed225256951300d8db9d6562d/login?service=https%3A%2F%2Fd.buaa.edu.cn%2Flogin%3Fcas_login%3Dtrue"
 ICLASS_QR_BASE = "http://iclass.buaa.edu.cn:8081/app/course/stu_scan_sign.action"
 
 
@@ -26,16 +29,20 @@ logger = logging.getLogger("auth")
 
 
 class SSOAuth:
-    def __init__(self, username=None, password=None, verify_ssl=True):
+    def __init__(
+        self, username=None, password=None, verify_ssl=True, use_vpn=False
+    ):
         """Initialize the SSO authentication handler.
 
         Args:
             username: 用户名/学号
             password: 密码
             verify_ssl: 是否验证 SSL 证书。对于证书过期且你信任目标站点的情况，可传入 False 临时绕过证书校验。
+            use_vpn: 是否通过 d.buaa.edu.cn VPN 入口访问 iClass。
         """
         self.username = username
         self.password = password
+        self.use_vpn = use_vpn
         # requests.Session().verify 控制是否验证 SSL 证书
         self.session = requests.Session()
         self.session.verify = verify_ssl
@@ -47,6 +54,35 @@ class SSOAuth:
         self.user_info: dict | None = None
         # 最近一次错误信息，供调用者展示
         self.last_error = None
+
+    def _service_url(self) -> str:
+        if self.use_vpn:
+            return f"{VPN_BASE.format(port=8346)}/"
+        return ICLASS_SERVICE_URL
+
+    def _api_base(self) -> str:
+        if self.use_vpn:
+            return f"{VPN_BASE.format(port=8347)}/app"
+        return ICLASS_API_BASE
+
+    @staticmethod
+    def _looks_like_iclass(url: str) -> bool:
+        return ("iclass.buaa.edu.cn" in url) or ("d.buaa.edu.cn/https-834" in url)
+
+    @staticmethod
+    def _looks_like_vpn_login_done(url: str) -> bool:
+        return url.rstrip("/") == "https://d.buaa.edu.cn"
+
+    def _enter_iclass_service(self) -> bool:
+        """在完成认证后显式访问 iClass 业务入口，确保进入课程系统。"""
+        try:
+            probe = self.session.get(self._service_url(), allow_redirects=True)
+            logger.info(f"Service probe final URL: {probe.url}")
+            return self._looks_like_iclass(probe.url)
+        except Exception as exc:
+            self.last_error = f"访问 iClass 业务入口失败：{exc}"
+            logger.error(self.last_error)
+            return False
 
     def login(self):
         """
@@ -60,11 +96,14 @@ class SSOAuth:
             return False
 
         try:
+            entry_login_url = VPN_CAS_LOGIN_URL if self.use_vpn else SSO_LOGIN_URL
+            entry_params = None if self.use_vpn else {"service": self._service_url()}
+
             # Step 1: Get the login page to obtain the execution parameter
             logger.info("Fetching SSO login page...")
             response = self.session.get(
-                SSO_LOGIN_URL,
-                params={"service": ICLASS_SERVICE_URL},
+                entry_login_url,
+                params=entry_params,
                 allow_redirects=True,
             )
 
@@ -93,13 +132,13 @@ class SSOAuth:
 
             headers = {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
-                "Referer": SSO_LOGIN_URL,
+                "Referer": entry_login_url,
                 "Content-Type": "application/x-www-form-urlencoded",
             }
 
             # IMPORTANT: Don't follow redirects immediately
             response = self.session.post(
-                SSO_LOGIN_URL,
+                entry_login_url,
                 headers=headers,
                 data=login_data,
                 allow_redirects=False,
@@ -142,7 +181,7 @@ class SSOAuth:
 
                         logger.info("Submitting 'Ignore Once' request...")
                         response = self.session.post(
-                            SSO_LOGIN_URL,
+                            entry_login_url,
                             headers=headers,
                             data=continue_data,
                             allow_redirects=False,
@@ -170,7 +209,10 @@ class SSOAuth:
                                 f"Final URL after 'Ignore Once': {response.url}"
                             )
 
-                            if "iclass.buaa.edu.cn" in response.url:
+                            if self.use_vpn and self._looks_like_vpn_login_done(response.url):
+                                self._enter_iclass_service()
+
+                            if self._looks_like_iclass(response.url):
                                 logger.info(
                                     "Successfully handled weak password and completed login"
                                 )
@@ -213,8 +255,17 @@ class SSOAuth:
                 # Check if we're successfully logged in
                 logger.info(f"Final URL after redirects: {response.url}")
 
-                if "iclass.buaa.edu.cn" in response.url:
+                if self.use_vpn and self._looks_like_vpn_login_done(response.url):
+                    self._enter_iclass_service()
+
+                if self._looks_like_iclass(response.url):
                     logger.info("Login successful")
+                    self._get_user_info()
+                    return True
+
+            # VPN stuck at homepage. Try manual iClass entry.
+            if self.use_vpn:
+                if self._enter_iclass_service():
                     self._get_user_info()
                     return True
 
@@ -231,7 +282,7 @@ class SSOAuth:
     def _get_user_info(self):
         try:
             logger.info("Fetching user info from iClass API...")
-            login_api = f"{ICLASS_API_BASE}/user/login.action"
+            login_api = f"{self._api_base()}/user/login.action"
             params = {
                 "phone": self.username,  # 直接用学号
                 "password": "",
