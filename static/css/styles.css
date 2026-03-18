@@ -505,7 +505,7 @@ h3 {
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
 }
 
-.generate-btn:hover {
+.generate-btn:not(:disabled):hover {
     transform: translateY(-2px);
     box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
 }
@@ -541,7 +541,7 @@ h3 {
     background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
 }
 
-.sign-btn:hover {
+.sign-btn:not(:disabled):hover {
     background: linear-gradient(135deg, #0f8a80 0%, #32d572 100%);
 }
 
