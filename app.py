@@ -14,18 +14,37 @@ DEFAULT_VERIFY_SSL = True
 
 # 接口URL定义
 class URL:
-    loginUrl = "https://iclass.buaa.edu.cn:8347/app/user/login.action"
-    courseUrl = (
-        "https://iclass.buaa.edu.cn:8347/app/choosecourse/get_myall_course.action"
-    )
-    semesterUrl = (
-        "https://iclass.buaa.edu.cn:8347/app/course/get_base_school_year.action"
-    )
-    courseInfoUrl = (
-        "https://iclass.buaa.edu.cn:8347/app/my/get_my_course_sign_detail.action"
-    )
-    # 2026-03 起，扫码签到需走 8346 的 eschool 路径，并使用 POST
-    scanSignUrl = "https://iclass.buaa.edu.cn:8346/eschool/app/course/stu_scan_sign.action"
+    DIRECT_BASE = "https://iclass.buaa.edu.cn:{port}"
+    VPN_BASE = "https://d.buaa.edu.cn/https-{port}/77726476706e69737468656265737421f9f44d9d342326526b0988e29d51367ba018"
+
+    @classmethod
+    def _base_8347(cls, use_vpn: bool = False) -> str:
+        return cls.VPN_BASE.format(port=8347) if use_vpn else cls.DIRECT_BASE.format(port=8347)
+
+    @classmethod
+    def _base_8346(cls, use_vpn: bool = False) -> str:
+        return cls.VPN_BASE.format(port=8346) if use_vpn else cls.DIRECT_BASE.format(port=8346)
+
+    @classmethod
+    def login_url(cls, use_vpn: bool = False) -> str:
+        return f"{cls._base_8347(use_vpn)}/app/user/login.action"
+
+    @classmethod
+    def course_url(cls, use_vpn: bool = False) -> str:
+        return f"{cls._base_8347(use_vpn)}/app/choosecourse/get_myall_course.action"
+
+    @classmethod
+    def semester_url(cls, use_vpn: bool = False) -> str:
+        return f"{cls._base_8347(use_vpn)}/app/course/get_base_school_year.action"
+
+    @classmethod
+    def course_info_url(cls, use_vpn: bool = False) -> str:
+        return f"{cls._base_8347(use_vpn)}/app/my/get_my_course_sign_detail.action"
+
+    @classmethod
+    def scan_sign_url(cls, use_vpn: bool = False) -> str:
+        # 2026-03 起，扫码签到需走 8346 的 eschool 路径，并使用 POST
+        return f"{cls._base_8346(use_vpn)}/eschool/app/course/stu_scan_sign.action"
 
 
 class Header(Dict):
@@ -41,43 +60,32 @@ class Header(Dict):
             self.update(params)
 
 
-def get_user_info(student_id: str, verify: bool = True):
-    """通过学号获取userId和sessionId"""
-    params = {
-        "password": "",
-        "phone": student_id,
-        "userLevel": "1",
-        "verificationType": "2",
-        "verificationUrl": "",
-    }
-
-    response = requests.get(url=URL.loginUrl, params=params, headers=Header(), verify=verify)
-
-    if response.status_code != 200:
-        return None, None, None
-
-    data = response.json()
-    if data.get("STATUS") != "0":
-        return None, None, None
-
-    user_id = data["result"]["id"]
-    session_id = data["result"]["sessionId"]
-    user_name = data["result"].get("realName", "未知用户")
-
-    return user_id, session_id, user_name
-
-
-def get_current_semester(user_id: str, session_id: str, verify: bool = True):
+def get_current_semester(
+    user_id: str,
+    session_id: str,
+    verify: bool = True,
+    use_vpn: bool = False,
+    http_session: Optional[requests.Session] = None,
+):
     """获取当前学期信息"""
     params = {"userId": user_id, "type": "2"}
     headers = Header({"sessionId": session_id})
 
-    response = requests.get(url=URL.semesterUrl, params=params, headers=headers, verify=verify)
+    requester = http_session or requests
+    response = requester.get(
+        url=URL.semester_url(use_vpn),
+        params=params,
+        headers=headers,
+        verify=verify,
+    )
 
     if response.status_code != 200:
         return None
 
-    data = response.json()
+    try:
+        data = response.json()
+    except ValueError:
+        return None
     if data.get("STATUS") != "0":
         return None
 
@@ -97,17 +105,30 @@ def get_current_semester(user_id: str, session_id: str, verify: bool = True):
     return current_semester
 
 
-def get_courses(user_id: str, session_id: str, semester_code: str, verify: bool = True):
+def get_courses(
+    user_id: str,
+    session_id: str,
+    semester_code: str,
+    verify: bool = True,
+    use_vpn: bool = False,
+    http_session: Optional[requests.Session] = None,
+):
     """获取用户的课程列表"""
     params = {"user_type": "1", "id": user_id, "xq_code": semester_code}
     headers = Header({"sessionId": session_id})
 
-    response = requests.get(url=URL.courseUrl, params=params, headers=headers, verify=verify)
+    requester = http_session or requests
+    response = requester.get(
+        url=URL.course_url(use_vpn), params=params, headers=headers, verify=verify
+    )
 
     if response.status_code != 200:
         return []
 
-    data = response.json()
+    try:
+        data = response.json()
+    except ValueError:
+        return []
     if data.get("STATUS") != "0":
         return []
 
@@ -124,10 +145,14 @@ def get_courses(user_id: str, session_id: str, semester_code: str, verify: bool 
 
 
 def get_courses_detail(
-    session: requests.Session, user_id: str, session_id: str, courses: List[Dict]
+    session: requests.Session,
+    user_id: str,
+    session_id: str,
+    courses: List[Dict],
+    use_vpn: bool = False,
 ):
     """获取课程签到详情，必须带上 sessionId"""
-    course_info_url = f"{URL.courseInfoUrl}?id={user_id}&courseId="
+    course_info_url = f"{URL.course_info_url(use_vpn)}?id={user_id}&courseId="
     available_courses = []
 
     for course in courses:
@@ -167,7 +192,10 @@ def get_courses_detail(
 def get_authenticated_sso_from_session() -> SSOAuth:
     """基于当前 Flask session 构建带登录态的 SSOAuth。"""
     verify_ssl = session.get("verify_ssl", DEFAULT_VERIFY_SSL)
-    sso_auth = SSOAuth(verify_ssl=verify_ssl)
+    sso_auth = SSOAuth(
+        verify_ssl=verify_ssl,
+        use_vpn=session.get("use_vpn", False),
+    )
     sso_auth.session.cookies.update(session.get("cookies", {}))
     sso_auth.session_id = session.get("session_id")
     return sso_auth
@@ -179,7 +207,7 @@ def login_page():
     # 如果已经登录，直接跳转到课程页面
     if "user_id" in session and "session_id" in session:
         return redirect(url_for("courses"))
-    return render_template("login.html")
+    return render_template("login.html", verify_ssl=True, use_vpn=False)
 
 
 # 修改路由名称，使其更加清晰
@@ -192,10 +220,17 @@ def courses():
     sso_auth = get_authenticated_sso_from_session()
 
     courses_detail = get_courses_detail(
-        sso_auth.session, session["user_id"], session["session_id"], session["courses"]
+        sso_auth.session,
+        session["user_id"],
+        session["session_id"],
+        session["courses"],
+        use_vpn=session.get("use_vpn", False),
     )
     return render_template(
-        "index.html", courses=courses_detail, user_name=session.get("user_name", "")
+        "index.html",
+        courses=courses_detail,
+        user_name=session.get("user_name", ""),
+        use_vpn=session.get("use_vpn", False),
     )
 
 
@@ -204,26 +239,41 @@ def login():
     """处理登录请求"""
     student_id = request.form.get("student_id")
     password = request.form.get("password")  # 如果登录需要密码
+    verify_ssl = True if request.form.get("verify_ssl") else False
+    use_vpn = True if request.form.get("use_vpn") else False
+
     if not student_id or not password:
         return render_template(
             "login.html",
             error="请输入学号和密码",
             student_id=student_id or "",
             password=password or "",
+            verify_ssl=verify_ssl,
+            use_vpn=use_vpn,
         )
 
-    # 读取用户在表单中对 SSL 验证的选择（勾选表示验证）
-    verify_ssl = True if request.form.get("verify_ssl") else False
+    # 读取用户在表单中的连接方式选择
     # 保存到会话以便后续页面使用相同选择
     session["verify_ssl"] = verify_ssl
+    session["use_vpn"] = use_vpn
 
     # 使用 SSO 登录
-    sso_auth = SSOAuth(username=student_id, password=password, verify_ssl=verify_ssl)
+    sso_auth = SSOAuth(
+        username=student_id,
+        password=password,
+        verify_ssl=verify_ssl,
+        use_vpn=use_vpn,
+    )
     if not sso_auth.login():
         # 如果 SSOAuth 提供了更详细的错误信息，则显示之
         error_msg = getattr(sso_auth, "last_error", None) or "登录失败，请检查学号或密码"
         return render_template(
-            "login.html", error=error_msg, student_id=student_id, password=password or ""
+            "login.html",
+            error=error_msg,
+            student_id=student_id,
+            password=password or "",
+            verify_ssl=verify_ssl,
+            use_vpn=use_vpn,
         )
 
     # 获取用户信息
@@ -231,7 +281,12 @@ def login():
     if not user_info:
         error_msg = getattr(sso_auth, "last_error", None) or "获取用户信息失败"
         return render_template(
-            "login.html", error=error_msg, student_id=student_id, password=password or ""
+            "login.html",
+            error=error_msg,
+            student_id=student_id,
+            password=password or "",
+            verify_ssl=verify_ssl,
+            use_vpn=use_vpn,
         )
 
     user_id = user_info.get("id")
@@ -241,11 +296,22 @@ def login():
     if not user_id or not session_id:
         error_msg = getattr(sso_auth, "last_error", None) or "登录成功但未获取到完整会话信息"
         return render_template(
-            "login.html", error=error_msg, student_id=student_id, password=password or ""
+            "login.html",
+            error=error_msg,
+            student_id=student_id,
+            password=password or "",
+            verify_ssl=verify_ssl,
+            use_vpn=use_vpn,
         )
 
     # 获取当前学期（遵循用户的 verify_ssl 选择）
-    semester_code = get_current_semester(user_id, session_id, verify=verify_ssl)
+    semester_code = get_current_semester(
+        user_id,
+        session_id,
+        verify=verify_ssl,
+        use_vpn=use_vpn,
+        http_session=sso_auth.session,
+    )
     if not semester_code:
         # 提供更具体的提示（例如证书/网络/接口问题）
         error_msg = (
@@ -253,11 +319,23 @@ def login():
             or "获取学期信息失败：可能是 iClass 接口不可用或网络/证书问题。"
         )
         return render_template(
-            "login.html", error=error_msg, student_id=student_id, password=password or ""
+            "login.html",
+            error=error_msg,
+            student_id=student_id,
+            password=password or "",
+            verify_ssl=verify_ssl,
+            use_vpn=use_vpn,
         )
 
     # 获取课程列表（遵循用户的 verify_ssl 选择）
-    courses = get_courses(user_id, session_id, semester_code, verify=verify_ssl)
+    courses = get_courses(
+        user_id,
+        session_id,
+        semester_code,
+        verify=verify_ssl,
+        use_vpn=use_vpn,
+        http_session=sso_auth.session,
+    )
     # 允许无课程用户登录，便于开发时检查页面 UI。
     if not courses:
         courses = []
@@ -282,7 +360,7 @@ def generate_qr():
     timestamp = payload.get("timestamp") or int(time.time() * 1000)
     # 新版签到二维码应指向 8346 + /eschool/app/course/stu_scan_sign.action
     url = (
-        f"{URL.scanSignUrl}?courseSchedId={course_sched_id}&timestamp={timestamp}"
+        f"{URL.scan_sign_url(session.get('use_vpn', False))}?courseSchedId={course_sched_id}&timestamp={timestamp}"
     )
 
     return jsonify({"qrUrl": url})
@@ -303,7 +381,7 @@ def sign_now():
     user_id = session["user_id"]
     session_id = session["session_id"]
 
-    sign_url = f"{URL.scanSignUrl}?courseSchedId={course_sched_id}&timestamp={timestamp}"
+    sign_url = f"{URL.scan_sign_url(session.get('use_vpn', False))}?courseSchedId={course_sched_id}&timestamp={timestamp}"
     headers = Header({"sessionId": session_id})
     params = {"id": user_id}
 
