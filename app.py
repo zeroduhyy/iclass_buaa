@@ -19,11 +19,19 @@ class URL:
 
     @classmethod
     def _base_8347(cls, use_vpn: bool = False) -> str:
-        return cls.VPN_BASE.format(port=8347) if use_vpn else cls.DIRECT_BASE.format(port=8347)
+        return (
+            cls.VPN_BASE.format(port=8347)
+            if use_vpn
+            else cls.DIRECT_BASE.format(port=8347)
+        )
 
     @classmethod
     def _base_8346(cls, use_vpn: bool = False) -> str:
-        return cls.VPN_BASE.format(port=8346) if use_vpn else cls.DIRECT_BASE.format(port=8346)
+        return (
+            cls.VPN_BASE.format(port=8346)
+            if use_vpn
+            else cls.DIRECT_BASE.format(port=8346)
+        )
 
     @classmethod
     def login_url(cls, use_vpn: bool = False) -> str:
@@ -266,7 +274,9 @@ def login():
     )
     if not sso_auth.login():
         # 如果 SSOAuth 提供了更详细的错误信息，则显示之
-        error_msg = getattr(sso_auth, "last_error", None) or "登录失败，请检查学号或密码"
+        error_msg = (
+            getattr(sso_auth, "last_error", None) or "登录失败，请检查学号或密码"
+        )
         return render_template(
             "login.html",
             error=error_msg,
@@ -294,7 +304,9 @@ def login():
     session_id = sso_auth.session_id
 
     if not user_id or not session_id:
-        error_msg = getattr(sso_auth, "last_error", None) or "登录成功但未获取到完整会话信息"
+        error_msg = (
+            getattr(sso_auth, "last_error", None) or "登录成功但未获取到完整会话信息"
+        )
         return render_template(
             "login.html",
             error=error_msg,
@@ -356,12 +368,10 @@ def generate_qr():
     """生成二维码的API"""
     payload = request.get_json(silent=True) or {}
     course_sched_id = payload.get("courseSchedId")
-    # 兼容前端传值；未传时使用当前毫秒时间戳
-    timestamp = payload.get("timestamp") or int(time.time() * 1000)
+    # 与 Rust 客户端保持一致：默认使用当前毫秒时间戳 + 36000
+    timestamp = payload.get("timestamp") or int(time.time() * 1000) + 36000
     # 新版签到二维码应指向 8346 + /eschool/app/course/stu_scan_sign.action
-    url = (
-        f"{URL.scan_sign_url(session.get('use_vpn', False))}?courseSchedId={course_sched_id}&timestamp={timestamp}"
-    )
+    url = f"{URL.scan_sign_url(session.get('use_vpn', False))}?courseSchedId={course_sched_id}&timestamp={timestamp}"
 
     return jsonify({"qrUrl": url})
 
@@ -377,7 +387,8 @@ def sign_now():
     if not course_sched_id:
         return jsonify({"STATUS": "1", "ERRMSG": "courseSchedId 不能为空"}), 400
 
-    timestamp = payload.get("timestamp") or int(time.time() * 1000)
+    # 与 Rust 客户端保持一致：默认使用当前毫秒时间戳 + 36000
+    timestamp = payload.get("timestamp") or int(time.time() * 1000) + 36000
     user_id = session["user_id"]
     session_id = session["session_id"]
 
@@ -387,7 +398,9 @@ def sign_now():
 
     sso_auth = get_authenticated_sso_from_session()
     try:
-        resp = sso_auth.session.post(sign_url, params=params, headers=headers, timeout=15)
+        resp = sso_auth.session.post(
+            sign_url, params=params, headers=headers, timeout=15
+        )
         data = resp.json()
     except requests.RequestException as exc:
         return jsonify({"STATUS": "1", "ERRMSG": f"签到请求失败: {exc}"}), 502
