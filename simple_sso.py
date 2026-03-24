@@ -29,9 +29,7 @@ logger = logging.getLogger("auth")
 
 
 class SSOAuth:
-    def __init__(
-        self, username=None, password=None, verify_ssl=True, use_vpn=False
-    ):
+    def __init__(self, username=None, password=None, verify_ssl=True, use_vpn=False):
         """Initialize the SSO authentication handler.
 
         Args:
@@ -48,7 +46,7 @@ class SSOAuth:
         self.session.verify = verify_ssl
         # 如果选择不验证证书，屏蔽 urllib3 的 InsecureRequestWarning
         if not verify_ssl:
-           urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
         self.session_id: str | None = None
         self.user_info: dict | None = None
@@ -196,7 +194,9 @@ class SSOAuth:
                             redirect_url = response.headers.get("Location")
                             if not redirect_url:
                                 self.last_error = "忽略提示后未收到重定向地址"
-                                logger.error("Missing redirect location after ignore flow")
+                                logger.error(
+                                    "Missing redirect location after ignore flow"
+                                )
                                 return False
                             logger.info(f"Redirecting to: {redirect_url}")
 
@@ -209,7 +209,9 @@ class SSOAuth:
                                 f"Final URL after 'Ignore Once': {response.url}"
                             )
 
-                            if self.use_vpn and self._looks_like_vpn_login_done(response.url):
+                            if self.use_vpn and self._looks_like_vpn_login_done(
+                                response.url
+                            ):
                                 self._enter_iclass_service()
 
                             if self._looks_like_iclass(response.url):
@@ -219,19 +221,25 @@ class SSOAuth:
                                 self._get_user_info()
                                 return True
                             else:
-                                self.last_error = f"忽略提示后跳转到 iClass 失败，URL: {response.url}"
+                                self.last_error = (
+                                    f"忽略提示后跳转到 iClass 失败，URL: {response.url}"
+                                )
                                 logger.error(
                                     f"Failed to redirect to iClass after 'Ignore Once'. URL: {response.url}"
                                 )
                                 return False
                     else:
-                        self.last_error = "在弱密码页面找不到 continue 表单的 execution 参数"
+                        self.last_error = (
+                            "在弱密码页面找不到 continue 表单的 execution 参数"
+                        )
                         logger.error(
                             "Could not find execution parameter in the continue form"
                         )
                         return False
                 else:
-                    self.last_error = "弱密码页面未找到 continue 表单（页面结构可能变化）"
+                    self.last_error = (
+                        "弱密码页面未找到 continue 表单（页面结构可能变化）"
+                    )
                     logger.error("Could not find continue form on the page")
                     return False
 
@@ -270,8 +278,12 @@ class SSOAuth:
                     return True
 
             # If we get here, login failed
-            self.last_error = f"登录失败，最终 URL: {getattr(response, 'url', 'unknown')}"
-            logger.error(f"Login failed. Final URL: {getattr(response, 'url', 'unknown')}")
+            self.last_error = (
+                f"登录失败，最终 URL: {getattr(response, 'url', 'unknown')}"
+            )
+            logger.error(
+                f"Login failed. Final URL: {getattr(response, 'url', 'unknown')}"
+            )
             return False
 
         except Exception as e:
@@ -297,7 +309,9 @@ class SSOAuth:
                 if user_data.get("STATUS") == "0":
                     result = user_data.get("result")
                     if not isinstance(result, dict):
-                        self.last_error = f"iClass API 返回的用户信息格式异常: {user_data}"
+                        self.last_error = (
+                            f"iClass API 返回的用户信息格式异常: {user_data}"
+                        )
                         logger.error(f"Unexpected user info result: {user_data}")
                         return False
 
@@ -310,7 +324,9 @@ class SSOAuth:
                     logger.error(f"Failed to get user info: {user_data}")
                     return False
             else:
-                self.last_error = f"请求 iClass API 失败，HTTP 状态: {response.status_code}"
+                self.last_error = (
+                    f"请求 iClass API 失败，HTTP 状态: {response.status_code}"
+                )
                 logger.error(f"Failed to get user info: {response.status_code}")
                 return False
         except Exception as e:

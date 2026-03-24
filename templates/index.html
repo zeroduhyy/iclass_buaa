@@ -393,11 +393,11 @@
                 return;
             }
 
-            const timestamp = Date.now();
+            const currentTime = Date.now();
             fetch('/generate_qr', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ courseSchedId, timestamp })
+                body: JSON.stringify({ courseSchedId })
             })
                 .then(response => response.json())
                 .then(data => {
@@ -419,7 +419,7 @@
 
                     // 更新时间显示
                     const timeDisplay = document.getElementById('timestamp');
-                    const date = new Date(timestamp);
+                    const date = new Date(currentTime);
                     timeDisplay.textContent = `当前时间: ${date.toLocaleString()}`;
                 })
                 .catch(error => {
@@ -445,7 +445,7 @@
             fetch('/sign_now', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ courseSchedId, timestamp: Date.now() })
+                body: JSON.stringify({ courseSchedId })
             })
                 .then(response => response.json())
                 .then(data => {
