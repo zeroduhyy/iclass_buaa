@@ -1,0 +1,40 @@
+{
+    "name": "my_iclass",
+    "version": "1.0.0",
+    "description": "北航iclass签到系统",
+    "author": "ZERODUHYY",
+    "main": "main.js",
+    "scripts": {
+        "dev": "cross-env NODE_ENV=development concurrently \"cd server && npm run dev\" \"cd client && npm run dev\" \"wait-on http://localhost:4000\"",
+        "build:setup": "cd client && npm run build && cd ../server && npm run build && cd ..",
+        "build:win": "npm run build:setup && electron-builder --win"
+    },
+    "build": {
+        "appId": "com.buaa.iclass",
+        "productName": "IClass",
+        "directories": {
+            "output": "dist_exe"
+        },
+        "win": {
+            "target": "portable",
+            "icon": "icon.ico"
+        },
+        "files": [
+            "main.js",
+            "server/dist/**/*",
+            "client/dist/**/*"
+        ],
+        "asar": true,
+        "asarUnpack": [
+            "server/dist/**/*"
+        ]
+    },
+    "devDependencies": {
+        "concurrently": "^8.2.2",
+        "cross-env": "^7.0.3",
+        "electron": "^30.0.0",
+        "electron-builder": "^24.13.3",
+        "wait-on": "^7.2.0"
+    },
+    "license": "MIT"
+}

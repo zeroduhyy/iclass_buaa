@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# Server Dist
+server/dist/
+server/build/
+
+# Client Dist
+client/dist/
+
+# Env config
+.env
+.env.local
+
+# Editor files
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+
+server/API.md
+dist_exe
