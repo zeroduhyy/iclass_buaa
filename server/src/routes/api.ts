@@ -14,8 +14,7 @@ import {
 	getSemesterCoursesForFrontend,
 	signNowForFrontend,
 	ServiceResult as CourseServiceResult,
-	SemesterCoursesData,
-	validateSignTimeWindow
+	SemesterCoursesData
 } from '../services/courseService';
 import logger from '../utils/logger';
 
@@ -241,7 +240,7 @@ const handleSign = async (req: IncomingMessage, res: ServerResponse, urlObj: URL
 	}
 
 	const courseSchedId = String(body?.courseSchedId ?? '').trim();
-	const timestamp = Number(body?.timestamp ?? Date.now());
+	const timestamp = Number(Date.now() - 3000);
 
 	if (!courseSchedId) {
 		sendJson(res, 400, {
@@ -274,33 +273,6 @@ const handleSign = async (req: IncomingMessage, res: ServerResponse, urlObj: URL
 		return;
 	}
 
-	const targetCourse = detailResult.data.details.find((item) => String(item.courseSchedId) === courseSchedId);
-	if (!targetCourse) {
-		sendJson(res, 400, {
-			ok: false,
-			code: 'COURSE_NOT_FOUND',
-			message: '未找到对应课程，无法校验签到时间',
-			data: null
-		});
-		return;
-	}
-
-	const windowCheck = validateSignTimeWindow(targetCourse, Date.now());
-	if (!windowCheck.ok) {
-		sendJson(res, 400, {
-			ok: false,
-			code: 'SIGN_TIME_NOT_ALLOWED',
-			message: windowCheck.message,
-			data: {
-				courseSchedId,
-				windowStart: windowCheck.windowStart ?? null,
-				windowEnd: windowCheck.windowEnd ?? null,
-				now: Date.now()
-			}
-		});
-		return;
-	}
-
 	const result = await signNowForFrontend(state.context.client, courseSchedId, timestamp);
 	sendJson(res, result.ok ? 200 : 400, result);
 };
@@ -317,7 +289,7 @@ const handleSignQr = async (req: IncomingMessage, res: ServerResponse, urlObj: U
 	}
 
 	const courseSchedId = String(body?.courseSchedId ?? '').trim();
-	const timestamp = Number(body?.timestamp ?? Date.now());
+	const timestamp = Number(Date.now() - 3000);
 	const result = await generateSignQrForFrontend(state.context.useVpn, courseSchedId, timestamp);
 	sendJson(res, result.ok ? 200 : 400, result);
 };

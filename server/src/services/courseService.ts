@@ -169,7 +169,7 @@ export const getMergedCourseDetailsForFrontend = async (
 export const signNowForFrontend = async (
 	client: IClassClient,
 	courseSchedId: string,
-	timestamp: number = Date.now()
+	timestamp: number
 ): Promise<ServiceResult<any>> => {
 	if (!courseSchedId) {
 		return {
@@ -198,44 +198,11 @@ export const signNowForFrontend = async (
 	}
 };
 
-export const validateSignTimeWindow = (
-	detail: CourseDetailItem,
-	now: number = Date.now()
-): SignTimeWindowResult => {
-	const classStart = parseDateTimeMs(detail.date, detail.startTime);
-	const classEnd = parseDateTimeMs(detail.date, detail.endTime);
-	if (!classStart || !classEnd) {
-		return {
-			ok: false,
-			message: '课程时间解析失败，无法校验签到时间窗口'
-		};
-	}
-
-	const tenMinutes = 10 * 60 * 1000;
-	const windowStart = classStart - tenMinutes;
-	const windowEnd = classEnd + tenMinutes;
-
-	if (now < windowStart || now > windowEnd) {
-		return {
-			ok: false,
-			message: '仅允许在上课前10分钟到下课后10分钟内直接签到',
-			windowStart,
-			windowEnd
-		};
-	}
-
-	return {
-		ok: true,
-		message: 'OK',
-		windowStart,
-		windowEnd
-	};
-};
 
 export const generateSignQrForFrontend = async (
 	useVpn: boolean,
 	courseSchedId: string,
-	timestamp: number = Date.now()
+	timestamp: number
 ): Promise<ServiceResult<SignQrData>> => {
 	if (useVpn) {
 		return {
@@ -255,7 +222,7 @@ export const generateSignQrForFrontend = async (
 		};
 	}
 
-	const qrTimestamp = timestamp + 36000;
+	const qrTimestamp = timestamp;
 	const signUrl = buildScanSignUrl(useVpn);
 	const qrUrl = `${signUrl}?courseSchedId=${encodeURIComponent(courseSchedId)}&timestamp=${encodeURIComponent(String(qrTimestamp))}`;
 

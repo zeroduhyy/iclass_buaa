@@ -35,7 +35,7 @@ export const signNow = async (
     const baseParams = {
         id: userId,
         courseSchedId,
-        timestamp: String(timestamp + 36000)
+        timestamp: String(timestamp)
     };
 
     const commonHeaders = {

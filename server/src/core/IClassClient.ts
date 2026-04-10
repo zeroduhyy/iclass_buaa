@@ -116,7 +116,7 @@ export class IClassClient {
     }
 
 
-    async signNow(courseSchedId: string, timestamp: number = Date.now()): Promise<any> {
+    async signNow(courseSchedId: string, timestamp: number): Promise<any> {
         const userId = this.userInfo?.id;
         const sessionId = this.sessionId;
         if (!userId || !sessionId) {
