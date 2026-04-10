@@ -262,17 +262,6 @@ const handleSign = async (req: IncomingMessage, res: ServerResponse, urlObj: URL
 		}
 	}
 
-	const detailResult = await getMergedCourseDetailsForFrontend(state.context.client, state.courses, 7);
-	if (!detailResult.ok || !detailResult.data) {
-		sendJson(res, 400, {
-			ok: false,
-			code: 'SIGN_TIME_CHECK_FAILED',
-			message: detailResult.message || '签到时间校验失败',
-			data: null
-		});
-		return;
-	}
-
 	const result = await signNowForFrontend(state.context.client, courseSchedId, timestamp);
 	sendJson(res, result.ok ? 200 : 400, result);
 };
