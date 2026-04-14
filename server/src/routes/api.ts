@@ -240,7 +240,7 @@ const handleSign = async (req: IncomingMessage, res: ServerResponse, urlObj: URL
 	}
 
 	const courseSchedId = String(body?.courseSchedId ?? '').trim();
-	const timestamp = Number(Date.now() - 3000);
+	const timestamp = Number(Date.now() + state.context.client.serverTimeOffset);
 
 	if (!courseSchedId) {
 		sendJson(res, 400, {
@@ -278,7 +278,7 @@ const handleSignQr = async (req: IncomingMessage, res: ServerResponse, urlObj: U
 	}
 
 	const courseSchedId = String(body?.courseSchedId ?? '').trim();
-	const timestamp = Number(Date.now() - 3000);
+	const timestamp = Number(Date.now() + state.context.client.serverTimeOffset);
 	const result = await generateSignQrForFrontend(state.context.useVpn, courseSchedId, timestamp);
 	sendJson(res, result.ok ? 200 : 400, result);
 };

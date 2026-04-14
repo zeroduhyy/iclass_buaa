@@ -15,6 +15,7 @@ export class IClassClient {
     public client: Got;
     public userInfo: any = null;
     public sessionId: string | null = null;
+    public serverTimeOffset: number = 0;
 
     constructor(
         private useVpn: boolean = false
@@ -55,6 +56,7 @@ export class IClassClient {
         const info = await fetchUserInfoFromApi(this.client, this.useVpn, username);
         this.userInfo = info.userInfo;
         this.sessionId = info.sessionId;
+        this.serverTimeOffset = info.serverTimeOffset;
     }
 
     async getCurrentSemester(): Promise<string | null> {

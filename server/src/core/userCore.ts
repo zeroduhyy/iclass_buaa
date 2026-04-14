@@ -5,6 +5,7 @@ import logger from '../utils/logger';
 export interface UserInfoResult {
     userInfo: any;
     sessionId: string | null;
+    serverTimeOffset: number; // 服务器偏移量（毫秒）
 }
 
 export const fetchUserInfoFromApi = async (
@@ -31,6 +32,23 @@ export const fetchUserInfoFromApi = async (
     } catch (err: any) {
         logger.error(`Error requesting iClass API: ${err?.message || err}`);
         throw new Error(`请求 iClass API 失败: ${err?.message || err}`);
+    }
+
+    let serverTimeOffset = 0;
+    const serverDateHeader = res.headers.date; // Got 自动处理为小写 key
+    if (serverDateHeader) {
+        const serverMs = new Date(serverDateHeader).getTime();
+        const localMs = Date.now(); // 拿到响应时的本地时间
+
+        if (Number.isFinite(serverMs)) {
+            // 偏移量 = 服务器时间 - 本地时间
+            serverTimeOffset = serverMs  - localMs;
+            logger.info(`Time sync: Server offset is ${serverTimeOffset}ms`);
+        } else {
+            logger.warn(`Time sync skipped: invalid Date header ${serverDateHeader}`);
+        }
+    } else {
+        logger.warn(`Time sync skipped: missing Date header, fallback offset=${serverTimeOffset}ms`);
     }
 
     if (res.statusCode !== 200) {
@@ -61,6 +79,7 @@ export const fetchUserInfoFromApi = async (
     logger.info(`Got user info for: ${result.realName ?? 'unknown'}`);
     return {
         userInfo: result,
-        sessionId
+        sessionId,
+        serverTimeOffset
     };
 };
