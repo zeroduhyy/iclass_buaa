@@ -5,6 +5,7 @@
     "author": "ZERODUHYY",
     "main": "main.js",
     "scripts": {
+        "predev": "node ./scripts/cleanup-dev-ports.js",
         "dev": "cross-env NODE_ENV=development concurrently \"cd server && npm run dev\" \"cd client && npm run dev\" \"wait-on http://localhost:4000\"",
         "build:setup": "cd client && npm run build && cd ../server && npm run build && cd ..",
         "build:win": "npm run build:setup && electron-builder --win"
