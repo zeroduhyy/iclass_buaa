@@ -1,5 +1,5 @@
 import type { Got } from 'got';
-import { ICLASS_URLS } from '../config/constants';
+import { ICLASS_URLS, VPN_OFFSET_CORRECTION_MS } from '../config/constants';
 import logger from '../utils/logger';
 
 export interface UserInfoResult {
@@ -42,8 +42,15 @@ export const fetchUserInfoFromApi = async (
 
         if (Number.isFinite(serverMs)) {
             // 偏移量 = 服务器时间 - 本地时间
-            serverTimeOffset = serverMs  - localMs;
-            logger.info(`Time sync: Server offset is ${serverTimeOffset}ms`);
+            const rawServerTimeOffset = serverMs - localMs;
+            serverTimeOffset = useVpn
+                ? rawServerTimeOffset + VPN_OFFSET_CORRECTION_MS
+                : rawServerTimeOffset;
+            logger.info(
+                useVpn
+                    ? `Time sync: raw server offset=${rawServerTimeOffset}ms, vpn correction=${VPN_OFFSET_CORRECTION_MS}ms, applied offset=${serverTimeOffset}ms`
+                    : `Time sync: Server offset is ${serverTimeOffset}ms`
+            );
         } else {
             logger.warn(`Time sync skipped: invalid Date header ${serverDateHeader}`);
         }

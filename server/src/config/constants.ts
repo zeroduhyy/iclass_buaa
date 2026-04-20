@@ -28,3 +28,6 @@ export const ICLASS_URLS = {
     }
 } as const;
 
+// Apply a conservative negative correction for VPN time sync to avoid future timestamps.
+export const VPN_OFFSET_CORRECTION_MS = -1000;
+
