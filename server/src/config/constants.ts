@@ -9,6 +9,7 @@ const DIRECT_BASE = "https://iclass.buaa.edu.cn:8347";
 export const ICLASS_URLS = {
     VPN: {
         SERVICE_HOME: VPN_BASE,
+        MY_CENTER: "https://d.buaa.edu.cn/https-8346/77726476706e69737468656265737421f9f44d9d342326526b0988e29d51367ba018/?type=jumpMyCenter",
         USER_LOGIN: `${VPN_BASE}/app/user/login.action`,
         COURSE_LIST: `${VPN_BASE}/app/choosecourse/get_myall_course.action`,
         SEMESTER_LIST: `${VPN_BASE}/app/course/get_base_school_year.action`,
@@ -18,6 +19,7 @@ export const ICLASS_URLS = {
     },
     DIRECT: {
         SERVICE_HOME: DIRECT_BASE,
+        MY_CENTER: "https://iclass.buaa.edu.cn:8346/?type=jumpMyCenter",
         USER_LOGIN: `${DIRECT_BASE}/app/user/login.action`,
         COURSE_LIST: `${DIRECT_BASE}/app/choosecourse/get_myall_course.action`,
         SEMESTER_LIST: `${DIRECT_BASE}/app/course/get_base_school_year.action`,
@@ -30,4 +32,3 @@ export const ICLASS_URLS = {
 
 // Apply a conservative negative correction for VPN time sync to avoid future timestamps.
 export const VPN_OFFSET_CORRECTION_MS = -1000;
-

@@ -3,7 +3,7 @@ import { CookieJar } from 'tough-cookie';
 import { vpnLogin } from './authCore';
 import { CourseDetailItem, CourseItem, getCourseByDate as getCourseByDateCore, getCourses, getCoursesDetail, getCurrentSemester } from './courseCore';
 import { signNow as signNowOnline } from './signCore';
-import { fetchUserInfoFromApi } from './userCore';
+import { fetchUserInfoFromApi, resolveIclassLoginName } from './userCore';
 
 export interface IClassLoginInput {
     studentId: string;
@@ -44,7 +44,11 @@ export class IClassClient {
 
         if (this.useVpn) {
             await vpnLogin(this.client, vpnUsername, vpnPassword);
-            await this.fetchUserInfo(studentId);
+            const loginName = await resolveIclassLoginName(this.client, true);
+            if (!loginName) {
+                throw new Error('无法从 iClass 跳转解析 loginName');
+            }
+            await this.fetchUserInfo(loginName);
             return;
         }
 

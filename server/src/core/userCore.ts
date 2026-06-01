@@ -2,11 +2,65 @@ import type { Got } from 'got';
 import { ICLASS_URLS, VPN_OFFSET_CORRECTION_MS } from '../config/constants';
 import logger from '../utils/logger';
 
+const LOGIN_NAME_REDIRECT_LIMIT = 8;
+
 export interface UserInfoResult {
     userInfo: any;
     sessionId: string | null;
     serverTimeOffset: number; // 服务器偏移量（毫秒）
 }
+
+/**
+ * Follows the iClass MyCenter SSO redirect chain and extracts the transient loginName.
+ */
+export const resolveIclassLoginName = async (
+    client: Got,
+    useVpn: boolean
+): Promise<string | null> => {
+    const network = useVpn ? 'VPN' : 'DIRECT';
+    const noRedirectClient = client.extend({
+        followRedirect: false,
+        throwHttpErrors: false
+    });
+    let currentUrl: string = ICLASS_URLS[network].MY_CENTER;
+
+    for (let i = 0; i < LOGIN_NAME_REDIRECT_LIMIT; i += 1) {
+        const res: any = await noRedirectClient.get(currentUrl);
+        const finalUrl = res.url || currentUrl;
+
+        const loginName = extractLoginName(finalUrl)
+            || extractLoginName(String(res.headers.location || ''))
+            || extractLoginName(typeof res.body === 'string' ? res.body : '');
+        if (loginName) {
+            return loginName;
+        }
+
+        const location = String(res.headers.location || '');
+        if (res.statusCode < 300 || res.statusCode >= 400 || !location) {
+            return null;
+        }
+
+        currentUrl = new URL(location, finalUrl).toString();
+    }
+
+    return null;
+};
+
+/**
+ * Decodes loginName without treating literal plus signs as spaces.
+ */
+const extractLoginName = (value: string): string | null => {
+    const match = /[?&#]loginname=([^&#"'<>\s]+)/i.exec(value);
+    if (!match?.[1]) {
+        return null;
+    }
+
+    try {
+        return decodeURIComponent(match[1]);
+    } catch {
+        return match[1];
+    }
+};
 
 export const fetchUserInfoFromApi = async (
     client: Got,
