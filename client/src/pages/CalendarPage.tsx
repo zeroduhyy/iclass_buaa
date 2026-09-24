@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import QRCode from "qrcode";
 import { logout } from "../api/auth";
 import { fetchCourseDetails, generateSignQr, signNow as signCourse } from "../api/course";
-import type { CourseDetailItem } from "../types/api";
+import type { ApiResponse, CourseDetailItem, SignOutcomeData } from "../types/api";
 import { clearSession, getUseVpnMode, getUserDisplay } from "../utils/session";
 
 const weekdays = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
@@ -54,26 +54,80 @@ const formatDateTime = (timestamp: number): string => {
     return new Date(timestamp).toLocaleString("zh-CN", { hour12: false });
 };
 
-const formatHm = (timestamp: number): string => {
-    return new Date(timestamp).toLocaleTimeString("zh-CN", {
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false
+/** 手动点「签到」时的重试参数：每 15s 一次，最多 60 次（15 分钟），期间可手动停止 */
+const SIGN_RETRY_INTERVAL_MS = 15_000;
+const SIGN_MAX_ATTEMPTS = 60;
+
+const sleep = (ms: number): Promise<void> =>
+    new Promise((resolve) => {
+        window.setTimeout(resolve, ms);
     });
+
+/**
+ * iClass 错误码字典（2026-09-22 实测）。
+ * 注意 ERRCODE 100 是**通用参数校验失败**，实测发生在实体查找之前 ——
+ * 请求形状正确之后，它通常意味着"当前不在签到窗口 / 老师未开启签到"，
+ * 而不是"程序写错了"。真正的元凶是本机时间戳，已由服务端改为向 iClass 索取。
+ */
+const ICLASS_ERR_HINT: Record<string, string> = {
+    "100": "iClass 拒绝了请求，通常是老师尚未开启签到或已关闭",
+    "101": "时间戳已过期，或当前不是上课时间",
+    "106": "账号标识不被 iClass 识别，该账号可能未绑定手机号"
 };
 
-const buildSignFailMessage = (message: string, data: unknown): string => {
-    if (!data || typeof data !== "object") {
-        return `签到失败: ${message}`;
+/** iClass 的 ERRMSG 文案 -> 人话（措辞对照 Yiki21/iclass_buaa_tui 的实现） */
+const ICLASS_MSG_HINT: Array<{ match: string; hint: string }> = [
+    { match: "未开始", hint: "签到还没开始" },
+    { match: "不是上课时间", hint: "当前不是上课时间，签到窗口未开" },
+    { match: "已结束", hint: "签到已结束" },
+    { match: "范围", hint: "不在签到范围内（可能受定位/校区限制）" },
+    { match: "已签到", hint: "该节次已经签过了" },
+    { match: "失效", hint: "二维码/时间戳已失效，需重新获取" }
+];
+
+/**
+ * 把服务端的签到结果翻译成人能看懂的一句话。
+ * 服务端已保证 ok === true 一定代表复检到 signStatus === '1'，这里只处理失败分支。
+ */
+const describeSignFailure = (res: ApiResponse<unknown>): string => {
+    const payload = (res.data ?? null) as Partial<SignOutcomeData> | null;
+    if (!payload || typeof payload !== "object") {
+        return res.message || "未知原因";
     }
 
-    const windowStart = (data as { windowStart?: unknown }).windowStart;
-    const windowEnd = (data as { windowEnd?: unknown }).windowEnd;
-    if (typeof windowStart !== "number" || typeof windowEnd !== "number") {
-        return `签到失败: ${message}`;
+    const parts: string[] = [];
+
+    // 时间戳来源不正常时先报这个：它是"参数错误"最常见的根因
+    if (payload.timestampSource && payload.timestampSource !== "server") {
+        parts.push(
+            payload.timestampSource === "qr"
+                ? "时间戳取自二维码"
+                : `时间戳为本机时钟兜底（未能取到 iClass 下发的时间戳：${payload.timestampError ?? "未知原因"}）`
+        );
     }
 
-    return `签到失败: ${message}（可签到时段：${formatHm(windowStart)} - ${formatHm(windowEnd)}）`;
+    const msgHint = ICLASS_MSG_HINT.find((item) =>
+        String(payload.iclassErrMsg ?? "").includes(item.match)
+    );
+
+    if (payload.iclassErrCode) {
+        const hint = msgHint?.hint ?? ICLASS_ERR_HINT[payload.iclassErrCode];
+        const head = `iClass ERRCODE=${payload.iclassErrCode} ${payload.iclassErrMsg ?? ""}`.trim();
+        parts.push(hint ? `${head}（${hint}）` : head);
+    } else if (payload.iclassErrMsg) {
+        parts.push(msgHint ? `${payload.iclassErrMsg}（${msgHint.hint}）` : payload.iclassErrMsg);
+    }
+
+    if (payload.verify) {
+        parts.push(
+            payload.verify.checked
+                ? `复检 signStatus=${payload.verify.signStatus ?? "未查到该节次"}`
+                : `复检失败（${payload.verify.error ?? "未知"}）`
+        );
+    }
+
+    const detail = parts.join("，");
+    return detail ? `${res.message}（${detail}）` : res.message || "未知原因";
 };
 
 const CalendarPage = () => {
@@ -87,7 +141,15 @@ const CalendarPage = () => {
     const [qrGeneratedAt, setQrGeneratedAt] = useState<number | null>(null);
     const [isQrRefreshing, setIsQrRefreshing] = useState(false);
     const [detailItems, setDetailItems] = useState<CourseDetailItem[]>([]);
+    const [isSigning, setIsSigning] = useState(false);
+    const [signAttempt, setSignAttempt] = useState(0);
+    const [qrLink, setQrLink] = useState("");
+    const [qrResult, setQrResult] = useState("");
+    const [isSigningByQr, setIsSigningByQr] = useState(false);
     const qrTimerRef = useRef<number | null>(null);
+    const signStopRef = useRef(false);
+    /** 防重入：连点"签到"按钮时只允许一个循环在跑 */
+    const isSigningRef = useRef(false);
 
     const user = useMemo(() => getUserDisplay(), []);
     const isVpnMode = useMemo(() => getUseVpnMode(), []);
@@ -250,37 +312,133 @@ const CalendarPage = () => {
         }
     };
 
+    /**
+     * 签到主循环：每 15 秒一次、最多 60 次（用户主动发起、可随时点停）。
+     *
+     * 服务端只有在复检到 signStatus === '1' 时才返回 ok，
+     * 因此这里不存在"接口通了就算成功"的误报。
+     * 返回是否签到成功。
+     */
+    const runSignLoop = async (
+        courseSchedId: string,
+        label = "",
+        options: { maxAttempts?: number; intervalMs?: number } = {}
+    ): Promise<boolean> => {
+        if (isSigningRef.current) {
+            return false;
+        }
+        const maxAttempts = Math.max(1, options.maxAttempts ?? SIGN_MAX_ATTEMPTS);
+        const intervalMs = Math.max(1000, options.intervalMs ?? SIGN_RETRY_INTERVAL_MS);
+        isSigningRef.current = true;
+        signStopRef.current = false;
+        setIsSigning(true);
+        setSignAttempt(0);
+
+        const prefix = label ? `${label}｜` : "";
+        try {
+            for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+                if (signStopRef.current) {
+                    setSignMessage(`${prefix}已手动停止（共尝试 ${attempt - 1} 次）`);
+                    return false;
+                }
+
+                setSignAttempt(attempt);
+                setSignMessage(`${prefix}第 ${attempt}/${maxAttempts} 次签到中...`);
+
+                let res: ApiResponse<unknown>;
+                try {
+                    res = await signCourse({ courseSchedId });
+                } catch (err) {
+                    res = {
+                        ok: false,
+                        code: "REQUEST_FAILED",
+                        message: err instanceof Error ? err.message : "签到请求失败",
+                        data: null
+                    };
+                }
+
+                if (res.ok) {
+                    setSignMessage(`${prefix}签到成功（第 ${attempt} 次尝试，已复检确认）`);
+                    setSelectedCourse((prev) =>
+                        prev && prev.courseSchedId === courseSchedId
+                            ? { ...prev, signStatus: "1" }
+                            : prev
+                    );
+                    await loadCalendarData();
+                    return true;
+                }
+
+                const detail = describeSignFailure(res);
+                if (attempt === maxAttempts) {
+                    setSignMessage(`${prefix}已尝试 ${attempt} 次仍未成功：${detail}`);
+                    return false;
+                }
+
+                setSignMessage(
+                    `${prefix}第 ${attempt} 次未成功：${detail}；${Math.round(intervalMs / 1000)} 秒后重试`
+                );
+                await sleep(intervalMs);
+            }
+            return false;
+        } finally {
+            isSigningRef.current = false;
+            setIsSigning(false);
+            setSignAttempt(0);
+        }
+    };
+
     const handleSignNow = async () => {
-        if (!selectedCourse?.courseSchedId || isSelectedSigned) {
+        const courseSchedId = selectedCourse?.courseSchedId;
+        if (!courseSchedId) {
             return;
         }
 
-        setSignMessage("签到中...");
+        // 重试过程中再次点击 = 停止
+        if (isSigning) {
+            signStopRef.current = true;
+            setSignMessage("正在停止重试...");
+            return;
+        }
+
+        if (isSelectedSigned) {
+            return;
+        }
+
+        await runSignLoop(courseSchedId);
+    };
+
+    /**
+     * 用老师二维码的链接签到：把链接里的参数**原样**透传给 iClass。
+     * 时间戳由服务端决定（二维码里的那个若已过期会被自动换成 iClass 刚下发的时间戳），
+     * 所以这里只提交一次，不做重试。
+     */
+    const handleSignByQrLink = async () => {
+        const raw = qrLink.trim();
+        if (!raw || isSigningByQr) {
+            return;
+        }
+
+        setIsSigningByQr(true);
+        setQrResult("提交中...");
         try {
-            const res = await signCourse({ courseSchedId: selectedCourse.courseSchedId });
-            if (!res.ok) {
-                setSignMessage(buildSignFailMessage(res.message, res.data));
+            const res = await signCourse({ qrUrl: raw });
+            const payload = (res.data ?? null) as Record<string, unknown> | null;
+            const sent =
+                payload && typeof payload === "object"
+                    ? JSON.stringify(payload.submittedParams ?? payload.parsedParams ?? {})
+                    : "（无）";
+
+            if (res.ok) {
+                setQrResult(`✅ 签到成功（已复检确认）。提交参数：${sent}`);
+                await loadCalendarData();
                 return;
             }
 
-            const signPayload = (res.data ?? {}) as { ERRMSG?: unknown; STATUS?: unknown };
-            const errMsg = String(signPayload.ERRMSG ?? "");
-            const status = String(signPayload.STATUS ?? "");
-            const successLike = status === "0";
-            setSignMessage(successLike ? "签到成功" : `签到结果: ${errMsg || "已提交"}`);
-
-            if (successLike) {
-                setDetailItems((prev) =>
-                    prev.map((item) =>
-                        item.courseSchedId === selectedCourse.courseSchedId
-                            ? { ...item, signStatus: "1" }
-                            : item
-                    )
-                );
-                setSelectedCourse((prev) => (prev ? { ...prev, signStatus: "1" } : prev));
-            }
+            setQrResult(`❌ ${describeSignFailure(res)}；提交参数：${sent}`);
         } catch (err) {
-            setSignMessage(err instanceof Error ? `签到失败: ${err.message}` : "签到失败");
+            setQrResult(err instanceof Error ? `签到失败: ${err.message}` : "签到失败");
+        } finally {
+            setIsSigningByQr(false);
         }
     };
 
@@ -352,8 +510,15 @@ const CalendarPage = () => {
                 <h3>已选课程</h3>
                 <p>{selectedCourse ? `${selectedCourse.name} (${selectedCourse.date} ${selectedCourse.startTime}-${selectedCourse.endTime})` : "未选择课程"}</p>
                 <div className="actions">
-                    <button disabled={!selectedCourse || isSelectedSigned} onClick={() => void handleSignNow()}>
-                        {isSelectedSigned ? "已签到" : "直接签到"}
+                    <button
+                        disabled={!selectedCourse || (isSelectedSigned && !isSigning)}
+                        onClick={() => void handleSignNow()}
+                    >
+                        {isSigning
+                            ? `停止重试（第 ${signAttempt} 次）`
+                            : isSelectedSigned
+                                ? "已签到"
+                                : "签到（失败自动重试）"}
                     </button>
                     {!isVpnMode && (
                         <button className="secondary" disabled={!selectedCourse} onClick={() => void handleGenerateQr()}>
@@ -368,6 +533,32 @@ const CalendarPage = () => {
                         <p className="hint">生成时间：{formatDateTime(qrGeneratedAt ?? Date.now())}</p>
                     </div>
                 )}
+            </section>
+
+            <section className="card selected-panel">
+                <h3>用老师二维码签到</h3>
+                <p className="hint">
+                    备用通道：把老师二维码的链接粘贴到下面（手机扫码后会显示 URL）。程序会把链接里的参数
+                    透传给 iClass，时间戳仍以 iClass 下发的为准 —— 所以这个入口和直接点签到是等价的，
+                    只在课程列表里找不到那节课时才有必要用。
+                </p>
+                <input
+                    className="student-id-input"
+                    value={qrLink}
+                    onChange={(e) => setQrLink(e.target.value)}
+                    placeholder="http://iclass.buaa.edu.cn:8081/app/course/stu_scan_sign.action?courseSchedId=...&timestamp=..."
+                    autoComplete="off"
+                    spellCheck={false}
+                />
+                <div className="actions">
+                    <button
+                        disabled={!qrLink.trim() || isSigningByQr}
+                        onClick={() => void handleSignByQrLink()}
+                    >
+                        {isSigningByQr ? "提交中..." : "用二维码链接签到"}
+                    </button>
+                </div>
+                {qrResult && <p className="hint">{qrResult}</p>}
             </section>
         </main>
     );

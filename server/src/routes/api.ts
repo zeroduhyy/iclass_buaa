@@ -12,9 +12,11 @@ import {
 	generateSignQrForFrontend,
 	getMergedCourseDetailsForFrontend,
 	getSemesterCoursesForFrontend,
+	parseSignQrUrl,
 	signNowForFrontend,
 	ServiceResult as CourseServiceResult,
-	SemesterCoursesData
+	SemesterCoursesData,
+	SignOutcomeData
 } from '../services/courseService';
 import logger from '../utils/logger';
 
@@ -239,8 +241,33 @@ const handleSign = async (req: IncomingMessage, res: ServerResponse, urlObj: URL
 		return;
 	}
 
-	const courseSchedId = String(body?.courseSchedId ?? '').trim();
-	const timestamp = Number(Date.now() + state.context.client.serverTimeOffset);
+	let courseSchedId = String(body?.courseSchedId ?? '').trim();
+	let extraParams: Record<string, string> | undefined;
+
+	// 老师二维码里的参数原样透传。注意：**时间戳不从这里取** ——
+	// iClass 只认它自己 get_timestamp.action 下发的毫秒时间戳，二维码里那个多半已过期。
+	// 二维码参数里的 id/courseSchedId/未知参数仍会一并带上。
+	const qrUrl = String(body?.qrUrl ?? '').trim();
+	if (qrUrl) {
+		const parsed = parseSignQrUrl(qrUrl);
+		if (!parsed.ok) {
+			logger.warn(`[sign] 二维码链接解析失败: ${parsed.message}`);
+			sendJson(res, 400, {
+				ok: false,
+				code: 'INVALID_QR_URL',
+				message: parsed.message,
+				data: { parsedParams: parsed.params ?? {} }
+			});
+			return;
+		}
+
+		courseSchedId = String(parsed.courseSchedId ?? '').trim();
+		extraParams = parsed.params;
+
+		logger.info(
+			`[sign] 使用二维码参数 courseSchedId=${courseSchedId} 全部参数=${JSON.stringify(parsed.params)}`
+		);
+	}
 
 	if (!courseSchedId) {
 		sendJson(res, 400, {
@@ -262,7 +289,21 @@ const handleSign = async (req: IncomingMessage, res: ServerResponse, urlObj: URL
 		}
 	}
 
-	const result = await signNowForFrontend(state.context.client, courseSchedId, timestamp);
+	const result = await signNowForFrontend(state.context.client, courseSchedId, extraParams);
+
+	const outcome = result.data as SignOutcomeData | null;
+	if (outcome) {
+		logger.info(
+			`[sign] courseSchedId=${courseSchedId} 提交参数=${JSON.stringify(outcome.submittedParams)} ` +
+			`时间戳=${outcome.timestamp}(来源=${outcome.timestampSource}, 第${outcome.attempts}次) ` +
+			`iclass=${outcome.iclassStatus}/${outcome.iclassErrCode} "${outcome.iclassErrMsg}" ` +
+			`verify(checked=${outcome.verify?.checked}, signStatus=${outcome.verify?.signStatus}) ` +
+			`=> ok=${result.ok} (${result.code})`
+		);
+	} else {
+		logger.warn(`[sign] courseSchedId=${courseSchedId} 未拿到签到结果: ${result.code} ${result.message}`);
+	}
+
 	sendJson(res, result.ok ? 200 : 400, result);
 };
 
@@ -278,8 +319,11 @@ const handleSignQr = async (req: IncomingMessage, res: ServerResponse, urlObj: U
 	}
 
 	const courseSchedId = String(body?.courseSchedId ?? '').trim();
-	const timestamp = Number(Date.now() + state.context.client.serverTimeOffset);
-	const result = await generateSignQrForFrontend(state.context.useVpn, courseSchedId, timestamp);
+	const result = await generateSignQrForFrontend(
+		state.context.client,
+		state.context.useVpn,
+		courseSchedId
+	);
 	sendJson(res, result.ok ? 200 : 400, result);
 };
 

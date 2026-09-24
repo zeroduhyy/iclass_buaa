@@ -2,7 +2,12 @@ import got, { Got } from 'got';
 import { CookieJar } from 'tough-cookie';
 import { vpnLogin } from './authCore';
 import { CourseDetailItem, CourseItem, getCourseByDate as getCourseByDateCore, getCourses, getCoursesDetail, getCurrentSemester } from './courseCore';
-import { signNow as signNowOnline } from './signCore';
+import {
+    fetchSignTimestamp,
+    signNow as signNowOnline,
+    SignRequestResult,
+    SignTimestampResult
+} from './signCore';
 import { fetchUserInfoFromApi, resolveIclassLoginName } from './userCore';
 
 export interface IClassLoginInput {
@@ -122,7 +127,20 @@ export class IClassClient {
     }
 
 
-    async signNow(courseSchedId: string, timestamp: number): Promise<any> {
+    /** 取 iClass 下发的签到时间戳（签到必须用它，不能用本机 Date.now()） */
+    async getSignTimestamp(): Promise<SignTimestampResult> {
+        const sessionId = this.sessionId;
+        if (!sessionId) {
+            throw new Error('缺少 sessionId，请先登录并获取用户信息');
+        }
+
+        return await fetchSignTimestamp(this.client, this.useVpn, sessionId, this.serverTimeOffset);
+    }
+
+    async signNow(
+        courseSchedId: string,
+        extraParams?: Record<string, string>
+    ): Promise<SignRequestResult> {
         const userId = this.userInfo?.id;
         const sessionId = this.sessionId;
         if (!userId || !sessionId) {
@@ -135,7 +153,7 @@ export class IClassClient {
             String(userId),
             sessionId,
             courseSchedId,
-            timestamp
+            { qrParams: extraParams, localOffsetMs: this.serverTimeOffset }
         );
     }
 }

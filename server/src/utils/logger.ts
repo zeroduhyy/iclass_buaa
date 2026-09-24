@@ -6,11 +6,18 @@ const myFormat = winston.format.printf(({ level, message, timestamp }) => {
     return `[${timestamp}] ${level}: ${message}`;
 });
 
+/**
+ * 无界面运行时（systemd / 重定向到文件）不要塞 ANSI 颜色码，否则 journalctl 和日志文件里
+ * 全是转义字符。判据：显式设了 NO_COLOR，或 stdout 不是 TTY。
+ */
+const useColor =
+    !process.env.NO_COLOR && Boolean(process.stdout && process.stdout.isTTY);
+
 const logger = winston.createLogger({
-    level: 'debug', // 同样支持级别控制
+    level: process.env.ICLASS_LOG_LEVEL ?? 'debug', // 同样支持级别控制
     format: winston.format.combine(
         winston.format.timestamp({ format: 'HH:mm:ss' }), // 时间戳
-        winston.format.colorize(), // 颜色（对应 pino 的 colorize）
+        ...(useColor ? [winston.format.colorize()] : []), // 颜色（对应 pino 的 colorize）
         myFormat // 应用自定义格式
     ),
     transports: [
