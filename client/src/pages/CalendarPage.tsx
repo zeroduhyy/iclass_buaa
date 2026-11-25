@@ -64,7 +64,7 @@ const formatHm = (timestamp: number): string => {
 
 const buildSignFailMessage = (message: string, data: unknown): string => {
     if (!data || typeof data !== "object") {
-        return `签到失败: ${message}`;
+        return message.startsWith("签到失败") ? message : `签到失败: ${message}`;
     }
 
     const windowStart = (data as { windowStart?: unknown }).windowStart;
@@ -76,13 +76,34 @@ const buildSignFailMessage = (message: string, data: unknown): string => {
     return `签到失败: ${message}（可签到时段：${formatHm(windowStart)} - ${formatHm(windowEnd)}）`;
 };
 
+type MessageTone = "info" | "success" | "error";
+
+interface PanelMessage {
+    tone: MessageTone;
+    text: string;
+}
+
+const statusLabel = (item: CourseDetailItem, todayYmd: string): { text: string; cls: string } => {
+    if (item.signStatus === "1") {
+        return { text: "已签到", cls: "signed" };
+    }
+    if (item.date < todayYmd) {
+        return { text: "未签到", cls: "missed" };
+    }
+    if (item.date === todayYmd) {
+        return { text: "今日待签", cls: "today" };
+    }
+    return { text: "未开始", cls: "upcoming" };
+};
+
 const CalendarPage = () => {
     const navigate = useNavigate();
     const [weekOffset, setWeekOffset] = useState(0);
     const [selectedCourse, setSelectedCourse] = useState<CourseDetailItem | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
-    const [signMessage, setSignMessage] = useState("");
+    const [panelMessage, setPanelMessage] = useState<PanelMessage | null>(null);
+    const [isSigning, setIsSigning] = useState(false);
     const [qrImageDataUrl, setQrImageDataUrl] = useState("");
     const [qrGeneratedAt, setQrGeneratedAt] = useState<number | null>(null);
     const [isQrRefreshing, setIsQrRefreshing] = useState(false);
@@ -92,6 +113,11 @@ const CalendarPage = () => {
     const user = useMemo(() => getUserDisplay(), []);
     const isVpnMode = useMemo(() => getUseVpnMode(), []);
     const isSelectedSigned = selectedCourse?.signStatus === "1";
+    const todayYmd = formatYmd(new Date());
+
+    const showMessage = (text: string, tone: MessageTone = "info") => {
+        setPanelMessage(text ? { tone, text } : null);
+    };
 
     const weekStart = useMemo(() => {
         const now = new Date();
@@ -139,6 +165,17 @@ const CalendarPage = () => {
         return map;
     }, [detailItems]);
 
+    const weekStats = useMemo(() => {
+        const start = formatYmd(weekDates[0]);
+        const end = formatYmd(weekDates[6]);
+        const inWeek = detailItems.filter((item) => item.date >= start && item.date <= end);
+        const signed = inWeek.filter((item) => item.signStatus === "1").length;
+        const todayPending = detailItems.filter(
+            (item) => item.date === todayYmd && item.signStatus !== "1"
+        ).length;
+        return { total: inWeek.length, signed, todayPending };
+    }, [detailItems, weekDates, todayYmd]);
+
     const weekRangeLabel = useMemo(() => {
         const start = weekDates[0];
         const end = weekDates[6];
@@ -162,13 +199,16 @@ const CalendarPage = () => {
         setLoading(true);
         setError("");
         try {
-
             const detailRes = await fetchCourseDetails();
             if (!detailRes.ok || !detailRes.data) {
                 throw new Error(detailRes.message || "课程详情获取失败");
             }
 
-            setDetailItems(detailRes.data.details ?? []);
+            const details = detailRes.data.details ?? [];
+            setDetailItems(details);
+            setSelectedCourse((prev) =>
+                prev ? details.find((item) => item.courseSchedId === prev.courseSchedId) ?? prev : prev
+            );
         } catch (err) {
             setError(err instanceof Error ? err.message : "加载课程失败");
         } finally {
@@ -200,7 +240,7 @@ const CalendarPage = () => {
     const handleSelectCourse = (item: CourseDetailItem) => {
         stopQrRefresh();
         setSelectedCourse(item);
-        setSignMessage("");
+        setPanelMessage(null);
         setQrImageDataUrl("");
         setQrGeneratedAt(null);
     };
@@ -238,86 +278,126 @@ const CalendarPage = () => {
             setIsQrRefreshing(true);
 
             qrTimerRef.current = window.setInterval(() => {
-                void refreshQrOnce(courseSchedId).catch((error: unknown) => {
-                    const message = error instanceof Error ? error.message : "二维码刷新失败";
-                    setSignMessage(`二维码刷新失败: ${message}`);
+                void refreshQrOnce(courseSchedId).catch((err: unknown) => {
+                    const message = err instanceof Error ? err.message : "二维码刷新失败";
+                    showMessage(`二维码刷新失败: ${message}`, "error");
                     stopQrRefresh();
                 });
             }, 2000);
         } catch (err) {
-            setSignMessage(err instanceof Error ? `二维码生成失败: ${err.message}` : "二维码生成失败");
+            showMessage(err instanceof Error ? `二维码生成失败: ${err.message}` : "二维码生成失败", "error");
             stopQrRefresh();
         }
     };
 
     const handleSignNow = async () => {
-        if (!selectedCourse?.courseSchedId || isSelectedSigned) {
+        if (!selectedCourse?.courseSchedId || isSelectedSigned || isSigning) {
             return;
         }
 
-        setSignMessage("签到中...");
+        const courseSchedId = selectedCourse.courseSchedId;
+        setIsSigning(true);
+        showMessage("签到中...");
         try {
-            const res = await signCourse({ courseSchedId: selectedCourse.courseSchedId });
+            const res = await signCourse({ courseSchedId });
             if (!res.ok) {
-                setSignMessage(buildSignFailMessage(res.message, res.data));
+                if (res.code === "SIGN_UNKNOWN") {
+                    // 请求已发出但结果不明：回读课程状态，不自动重试。
+                    showMessage(`${res.message}（已自动刷新课程状态）`, "error");
+                    await loadCalendarData();
+                    return;
+                }
+                showMessage(buildSignFailMessage(res.message, res.data), "error");
                 return;
             }
 
-            const signPayload = (res.data ?? {}) as { ERRMSG?: unknown; STATUS?: unknown };
-            const errMsg = String(signPayload.ERRMSG ?? "");
-            const status = String(signPayload.STATUS ?? "");
-            const successLike = status === "0";
-            setSignMessage(successLike ? "签到成功" : `签到结果: ${errMsg || "已提交"}`);
-
-            if (successLike) {
-                setDetailItems((prev) =>
-                    prev.map((item) =>
-                        item.courseSchedId === selectedCourse.courseSchedId
-                            ? { ...item, signStatus: "1" }
-                            : item
-                    )
-                );
-                setSelectedCourse((prev) => (prev ? { ...prev, signStatus: "1" } : prev));
-            }
+            // 服务端已校验 STATUS 与 stuSignStatus，ok 即代表签到成功。
+            showMessage("签到成功", "success");
+            setDetailItems((prev) =>
+                prev.map((item) =>
+                    item.courseSchedId === courseSchedId ? { ...item, signStatus: "1" } : item
+                )
+            );
+            setSelectedCourse((prev) => (prev ? { ...prev, signStatus: "1" } : prev));
         } catch (err) {
-            setSignMessage(err instanceof Error ? `签到失败: ${err.message}` : "签到失败");
+            showMessage(err instanceof Error ? `签到失败: ${err.message}` : "签到失败", "error");
+        } finally {
+            setIsSigning(false);
         }
     };
+
+    const selectedStatus = selectedCourse ? statusLabel(selectedCourse, todayYmd) : null;
 
     return (
         <main className="page calendar-page">
             <header className="topbar">
                 <div>
-                    <h2>北航 iClass 日历签到</h2>
-                    <p className="hint">欢迎，{user.userName || user.userId || "同学"}</p>
+                    <small className="auth-kicker">BUAA ICLASS</small>
+                    <h2 className="topbar-title">课程日历签到</h2>
+                    <p className="hint topbar-hint">
+                        欢迎，{user.userName || user.userId || "同学"}
+                        <span className={`mode-badge ${isVpnMode ? "vpn" : "direct"}`}>
+                            {isVpnMode ? "WebVPN" : "校园网直连"}
+                        </span>
+                    </p>
                 </div>
                 <div className="topbar-actions">
+                    <button className="ghost" disabled={loading} onClick={() => void loadCalendarData()}>
+                        {loading ? "刷新中..." : "刷新课程"}
+                    </button>
                     <button className="logout-btn" onClick={() => void handleLogout()}>退出登录</button>
                 </div>
             </header>
 
             <section className="week-nav card">
-                <button onClick={() => setWeekOffset((v) => v - 1)}>上一周</button>
-                <strong>{weekRangeLabel}</strong>
-                <button onClick={() => setWeekOffset((v) => v + 1)}>下一周</button>
-                <button className="ghost" onClick={() => setWeekOffset(0)}>本周</button>
+                <div className="week-nav-controls">
+                    <button className="ghost" onClick={() => setWeekOffset((v) => v - 1)}>‹ 上一周</button>
+                    <strong className="week-label">{weekRangeLabel}</strong>
+                    <button className="ghost" onClick={() => setWeekOffset((v) => v + 1)}>下一周 ›</button>
+                    {weekOffset !== 0 && (
+                        <button className="ghost" onClick={() => setWeekOffset(0)}>回到本周</button>
+                    )}
+                </div>
+                <div className="week-stats">
+                    <span>本周 <b>{weekStats.total}</b> 节</span>
+                    <span>已签 <b>{weekStats.signed}</b></span>
+                    <span className={weekStats.todayPending > 0 ? "accent" : ""}>
+                        今日待签 <b>{weekStats.todayPending}</b>
+                    </span>
+                </div>
             </section>
 
-            {loading && <section className="card selected-panel"><p>课程加载中...</p></section>}
-            {error && <section className="card selected-panel"><p className="error-text">{error}</p></section>}
+            {error && (
+                <section className="card error-banner">
+                    <p>{error}</p>
+                    <button className="ghost small" onClick={() => void loadCalendarData()}>重试</button>
+                </section>
+            )}
 
             <section className="calendar-shell card">
+                <div className="legend">
+                    <span><i className="dot today" />今日待签</span>
+                    <span><i className="dot upcoming" />未开始</span>
+                    <span><i className="dot missed" />未签到</span>
+                    <span><i className="dot signed" />已签到</span>
+                </div>
                 <div className="calendar-scroll">
                     <div className="calendar-table">
-                        <div className="table-head time-head">时间/星期</div>
-                        {weekdays.map((day, index) => (
-                            <div key={`head-${day}`} className="table-head day-head">
-                                <span>{day}</span>
-                                <small className={index <= 4 ? "day-date" : "day-date muted"}>
-                                    {formatMonthDay(weekDates[index])}
-                                </small>
-                            </div>
-                        ))}
+                        <div className="table-head time-head">时间 / 星期</div>
+                        {weekdays.map((day, index) => {
+                            const isToday = formatYmd(weekDates[index]) === todayYmd;
+                            return (
+                                <div key={`head-${day}`} className={`table-head day-head ${isToday ? "is-today" : ""}`}>
+                                    <span>
+                                        {day}
+                                        {isToday && <em className="today-tag">今天</em>}
+                                    </span>
+                                    <small className={index <= 4 ? "day-date" : "day-date muted"}>
+                                        {formatMonthDay(weekDates[index])}
+                                    </small>
+                                </div>
+                            );
+                        })}
 
                         {timeSlots.map((slot) => (
                             <Fragment key={slot.key}>
@@ -329,18 +409,26 @@ const CalendarPage = () => {
                                     const dateYmd = formatYmd(weekDates[index]);
                                     const cellItems = courseMapByCell.get(toCellKey(dateYmd, slot.key)) ?? [];
                                     return (
-                                        <div key={`${slot.key}-${day}`} className="day-slot">
-                                            {cellItems.length === 0 && <small className="hint">-</small>}
-                                            {cellItems.map((item) => (
-                                                <button
-                                                    key={item.courseSchedId}
-                                                    className={`ghost small course-item ${item.signStatus === "1" ? "signed" : "unsigned"}`}
-                                                    onClick={() => handleSelectCourse(item)}
-                                                >
-                                                    <span className="course-title">{item.name}</span>
-                                                    <span className="course-time">{item.startTime}-{item.endTime}</span>
-                                                </button>
-                                            ))}
+                                        <div
+                                            key={`${slot.key}-${day}`}
+                                            className={`day-slot ${dateYmd === todayYmd ? "is-today" : ""}`}
+                                        >
+                                            {cellItems.map((item) => {
+                                                const status = statusLabel(item, todayYmd);
+                                                const isActive = selectedCourse?.courseSchedId === item.courseSchedId;
+                                                return (
+                                                    <button
+                                                        key={item.courseSchedId}
+                                                        className={`course-item ${status.cls} ${isActive ? "active" : ""}`}
+                                                        onClick={() => handleSelectCourse(item)}
+                                                        title={`${item.name} · ${status.text}`}
+                                                    >
+                                                        <span className="course-title">{item.name}</span>
+                                                        <span className="course-time">{item.startTime}-{item.endTime}</span>
+                                                        <span className="course-status">{status.text}</span>
+                                                    </button>
+                                                );
+                                            })}
                                         </div>
                                     );
                                 })}
@@ -348,26 +436,49 @@ const CalendarPage = () => {
                         ))}
                     </div>
                 </div>
+                {loading && detailItems.length === 0 && <div className="loading-mask">课程加载中...</div>}
             </section>
 
             <section className="card selected-panel">
-                <h3>已选课程</h3>
-                <p>{selectedCourse ? `${selectedCourse.name} (${selectedCourse.date} ${selectedCourse.startTime}-${selectedCourse.endTime})` : "未选择课程"}</p>
-                <div className="actions">
-                    <button disabled={!selectedCourse || isSelectedSigned} onClick={() => void handleSignNow()}>
-                        {isSelectedSigned ? "已签到" : "直接签到"}
-                    </button>
-                    {!isVpnMode && (
-                        <button className="secondary" disabled={!selectedCourse} onClick={() => void handleGenerateQr()}>
-                            {isQrRefreshing ? "停止二维码刷新" : "生成二维码"}
-                        </button>
-                    )}
-                </div>
-                {signMessage && <p className="hint">{signMessage}</p>}
-                {!isVpnMode && qrImageDataUrl && (
-                    <div className="qr-preview">
-                        <img src={qrImageDataUrl} alt="签到二维码" className="qr-image" />
-                        <p className="hint">生成时间：{formatDateTime(qrGeneratedAt ?? Date.now())}</p>
+                {!selectedCourse ? (
+                    <p className="empty-hint">点击日历中的课程，即可签到或生成签到二维码</p>
+                ) : (
+                    <div className="selected-layout">
+                        <div className="selected-info">
+                            <div className="selected-head">
+                                <h3>{selectedCourse.name}</h3>
+                                {selectedStatus && (
+                                    <span className={`status-pill ${selectedStatus.cls}`}>{selectedStatus.text}</span>
+                                )}
+                            </div>
+                            <p className="selected-meta">
+                                {selectedCourse.date} · {selectedCourse.startTime}-{selectedCourse.endTime}
+                            </p>
+                            <div className="actions">
+                                <button disabled={isSelectedSigned || isSigning} onClick={() => void handleSignNow()}>
+                                    {isSelectedSigned ? "已签到" : isSigning ? "签到中..." : "直接签到"}
+                                </button>
+                                <button className="secondary" onClick={() => void handleGenerateQr()}>
+                                    {isQrRefreshing ? "停止二维码" : "生成签到二维码"}
+                                </button>
+                            </div>
+                            {panelMessage && (
+                                <p className={`panel-message ${panelMessage.tone}`}>{panelMessage.text}</p>
+                            )}
+                            <p className="hint small-hint">
+                                二维码每 2 秒刷新一次，请用 iClass App 或微信扫码
+                                {isVpnMode ? "（扫码的手机需要连接校园网）" : ""}。
+                            </p>
+                        </div>
+                        {qrImageDataUrl && (
+                            <div className="qr-preview">
+                                <img src={qrImageDataUrl} alt="签到二维码" className="qr-image" />
+                                <p className="hint qr-time">
+                                    {isQrRefreshing && <i className="live-dot" />}
+                                    {formatDateTime(qrGeneratedAt ?? Date.now())}
+                                </p>
+                            </div>
+                        )}
                     </div>
                 )}
             </section>
