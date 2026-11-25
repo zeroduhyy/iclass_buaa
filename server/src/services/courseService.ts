@@ -214,7 +214,7 @@ export const generateSignQrForFrontend = async (
 	}
 
 	try {
-		// 时间戳按当前网络（直连 / VPN）获取，二维码内容始终是直连地址，供 iClass App / 微信扫码。
+		// 时间戳按当前网络（直连 / VPN）获取，二维码内容始终是直连地址，供 智慧北航 App 扫码。
 		const qrTimestamp = await client.getSignTimestamp();
 		const signUrl = buildScanSignUrl();
 		const qrUrl = `${signUrl}?courseSchedId=${encodeURIComponent(courseSchedId)}&timestamp=${encodeURIComponent(String(qrTimestamp))}`;

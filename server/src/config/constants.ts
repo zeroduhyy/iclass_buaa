@@ -34,7 +34,7 @@ export const ICLASS_URLS = {
         SEMESTER_LIST: `${DIRECT_BASE}/app/course/get_base_school_year.action`,
         COURSE_SIGN_DETAIL: `${DIRECT_BASE}/app/my/get_my_course_sign_detail.action`,
         AUTO_SIGN: `${DIRECT_AUTO_SIGN_BASE}/app/course/stu_auto_sign.action`,
-        // 二维码内容：交给 iClass App / 微信扫码，始终使用直连地址（VPN 模式也一样）。
+        // 二维码内容：交给 智慧北航 App 扫码，始终使用直连地址（VPN 模式也一样）。
         SCAN_SIGN: `${DIRECT_CHECKIN_BASE}/app/course/stu_scan_sign.action`,
         SIGN_TIMESTAMP: `${DIRECT_CHECKIN_BASE}/app/common/get_timestamp.action`,
         COURSE_SCHEDULE_BY_DATE: `${DIRECT_BASE}/app/course/get_stu_course_sched.action`

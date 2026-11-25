@@ -23,7 +23,7 @@ const buildHeaders = (sessionId: string) => ({
 });
 
 /**
- * 二维码内容使用的扫码签到地址。二维码由 iClass App / 微信扫描，
+ * 二维码内容使用的扫码签到地址。二维码由 智慧北航 App 扫描，
  * 扫码方走的是直连网络，所以无论当前是否 VPN 登录都返回直连地址。
  */
 export const buildScanSignUrl = (): string => ICLASS_URLS.DIRECT.SCAN_SIGN;

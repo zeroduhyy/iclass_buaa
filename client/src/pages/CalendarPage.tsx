@@ -466,7 +466,7 @@ const CalendarPage = () => {
                                 <p className={`panel-message ${panelMessage.tone}`}>{panelMessage.text}</p>
                             )}
                             <p className="hint small-hint">
-                                二维码每 2 秒刷新一次，请用 iClass App 或微信扫码
+                                二维码每 2 秒刷新一次，请用智慧北航 App 扫码
                                 {isVpnMode ? "（扫码的手机需要连接校园网）" : ""}。
                             </p>
                         </div>
