@@ -539,6 +539,7 @@ button:disabled {
 
 .course-item:hover:not(:disabled) {
   transform: translateY(-1px);
+  box-shadow: 0 4px 10px rgba(20, 37, 58, 0.1);
 }
 
 .course-item.today { background: var(--st-today-bg); color: var(--st-today-fg); border-left-color: var(--st-today-bar); }
@@ -546,14 +547,14 @@ button:disabled {
 .course-item.missed { background: var(--st-missed-bg); color: var(--st-missed-fg); border-left-color: var(--st-missed-bar); }
 .course-item.signed { background: var(--st-signed-bg); color: var(--st-signed-fg); border-left-color: var(--st-signed-bar); }
 
-.course-item.today:hover:not(:disabled),
-.course-item.upcoming:hover:not(:disabled),
-.course-item.missed:hover:not(:disabled),
-.course-item.signed:hover:not(:disabled) {
-  filter: brightness(0.97);
-}
+/* 覆盖全局 button:hover 的蓝色背景，悬浮时保持状态色，只略微加深 */
+.course-item.today:hover:not(:disabled) { background: #ffeab0; }
+.course-item.upcoming:hover:not(:disabled) { background: #d9e8fb; }
+.course-item.missed:hover:not(:disabled) { background: #fadada; }
+.course-item.signed:hover:not(:disabled) { background: #d8f0e2; }
 
-.course-item.active {
+.course-item.active,
+.course-item.active:hover:not(:disabled) {
   box-shadow: 0 0 0 2px var(--brand);
 }
 
