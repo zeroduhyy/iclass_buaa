@@ -137,9 +137,28 @@ const CalendarPage = () => {
         });
     }, [weekStart]);
 
-    const courseMapByCell = useMemo(() => {
-        const map = new Map<string, CourseDetailItem[]>();
+    // 同名、同日、同时段的课次只显示一张卡片：按日期查询会把同一门课其他教学班的课次也返回，
+    // 它们课程 id 不同。优先取已签到的记录，其次取本人签到过的课程 id，最后才取第一条。
+    const { courseMapByCell, duplicateCount } = useMemo(() => {
+        const signedCourseIds = new Set(
+            detailItems.filter((item) => item.signStatus === "1").map((item) => item.id)
+        );
+        const groups = new Map<string, CourseDetailItem[]>();
         for (const item of detailItems) {
+            const key = `${item.date}|${item.startTime}|${item.endTime}|${item.name}`;
+            const group = groups.get(key) ?? [];
+            group.push(item);
+            groups.set(key, group);
+        }
+
+        const counts = new Map<string, number>();
+        const map = new Map<string, CourseDetailItem[]>();
+        for (const group of groups.values()) {
+            const item =
+                group.find((entry) => entry.signStatus === "1") ??
+                group.find((entry) => signedCourseIds.has(entry.id)) ??
+                group[0];
+            counts.set(item.courseSchedId, group.length);
             const cellKey = toCellKey(item.date, getSlotKey(item));
             const list = map.get(cellKey) ?? [];
             list.push(item);
@@ -162,19 +181,20 @@ const CalendarPage = () => {
             });
         }
 
-        return map;
+        return { courseMapByCell: map, duplicateCount: counts };
     }, [detailItems]);
 
     const weekStats = useMemo(() => {
         const start = formatYmd(weekDates[0]);
         const end = formatYmd(weekDates[6]);
-        const inWeek = detailItems.filter((item) => item.date >= start && item.date <= end);
+        const unique = [...courseMapByCell.values()].flat();
+        const inWeek = unique.filter((item) => item.date >= start && item.date <= end);
         const signed = inWeek.filter((item) => item.signStatus === "1").length;
-        const todayPending = detailItems.filter(
+        const todayPending = unique.filter(
             (item) => item.date === todayYmd && item.signStatus !== "1"
         ).length;
         return { total: inWeek.length, signed, todayPending };
-    }, [detailItems, weekDates, todayYmd]);
+    }, [courseMapByCell, weekDates, todayYmd]);
 
     const weekRangeLabel = useMemo(() => {
         const start = weekDates[0];
@@ -425,7 +445,14 @@ const CalendarPage = () => {
                                                     >
                                                         <span className="course-title">{item.name}</span>
                                                         <span className="course-time">{item.startTime}-{item.endTime}</span>
-                                                        <span className="course-status">{status.text}</span>
+                                                        <span className="course-status">
+                                                            {status.text}
+                                                            {(duplicateCount.get(item.courseSchedId) ?? 1) > 1 && (
+                                                                <em className="dup-badge">
+                                                                    ×{duplicateCount.get(item.courseSchedId)}
+                                                                </em>
+                                                            )}
+                                                        </span>
                                                     </button>
                                                 );
                                             })}

@@ -578,6 +578,14 @@ button:disabled {
   opacity: 0.8;
 }
 
+.dup-badge {
+  font-style: normal;
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.08);
+}
+
 .loading-mask {
   position: absolute;
   inset: 0;
