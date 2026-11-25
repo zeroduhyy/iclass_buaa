@@ -268,7 +268,6 @@ const handleSignQr = async (req: IncomingMessage, res: ServerResponse): Promise<
 	const courseSchedId = String(body?.courseSchedId ?? '').trim();
 	const result = await generateSignQrForFrontend(
 		state.context.client,
-		state.context.useVpn,
 		courseSchedId
 	);
 	sendJson(res, result.ok ? 200 : 400, result);

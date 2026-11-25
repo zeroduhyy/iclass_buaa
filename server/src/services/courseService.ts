@@ -184,14 +184,16 @@ export const signNowForFrontend = async (
 		return {
 			ok: true,
 			code: 'OK',
-			message: '签到请求已提交',
+			message: '签到成功',
 			data: signResult
 		};
 	} catch (error) {
+		const message = normalizeErrorMessage(error);
 		return {
 			ok: false,
-			code: 'SIGN_FAILED',
-			message: normalizeErrorMessage(error),
+			// SIGN_UNKNOWN：请求已发出但无法确认结果，前端应刷新课程状态而不是直接重试。
+			code: message.startsWith('签到结果未知') ? 'SIGN_UNKNOWN' : 'SIGN_FAILED',
+			message,
 			data: null
 		};
 	}
@@ -200,18 +202,8 @@ export const signNowForFrontend = async (
 
 export const generateSignQrForFrontend = async (
 	client: IClassClient,
-	useVpn: boolean,
 	courseSchedId: string
 ): Promise<ServiceResult<SignQrData>> => {
-	if (useVpn) {
-		return {
-			ok: false,
-			code: 'UNSUPPORTED_MODE',
-			message: 'VPN 模式不支持生成二维码，请使用直接签到',
-			data: null
-		};
-	}
-
 	if (!courseSchedId) {
 		return {
 			ok: false,
@@ -222,8 +214,9 @@ export const generateSignQrForFrontend = async (
 	}
 
 	try {
+		// 时间戳按当前网络（直连 / VPN）获取，二维码内容始终是直连地址，供 iClass App / 微信扫码。
 		const qrTimestamp = await client.getSignTimestamp();
-		const signUrl = buildScanSignUrl(useVpn);
+		const signUrl = buildScanSignUrl();
 		const qrUrl = `${signUrl}?courseSchedId=${encodeURIComponent(courseSchedId)}&timestamp=${encodeURIComponent(String(qrTimestamp))}`;
 
 		return {

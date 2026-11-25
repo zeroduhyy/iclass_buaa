@@ -22,9 +22,15 @@ const buildHeaders = (sessionId: string) => ({
     'User-Agent': 'Mozilla/5.0 (Linux; Android 13; M2012K11AC Build/TKQ1.221114.001; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/120.0.0.0 Mobile Safari/537.36 wxwork/4.1.30 MicroMessenger/7.0.1 Language/zh'
 });
 
-export const buildScanSignUrl = (useVpn: boolean): string => {
+/**
+ * 二维码内容使用的扫码签到地址。二维码由 iClass App / 微信扫描，
+ * 扫码方走的是直连网络，所以无论当前是否 VPN 登录都返回直连地址。
+ */
+export const buildScanSignUrl = (): string => ICLASS_URLS.DIRECT.SCAN_SIGN;
+
+export const buildAutoSignUrl = (useVpn: boolean): string => {
     const network = useVpn ? 'VPN' : 'DIRECT';
-    return ICLASS_URLS[network].SCAN_SIGN;
+    return ICLASS_URLS[network].AUTO_SIGN;
 };
 
 export const buildTimestampUrl = (useVpn: boolean): string => {
@@ -65,6 +71,19 @@ export const getServerTimestamp = async (
     return timestamp;
 };
 
+const isStatusOk = (status: unknown): boolean => {
+    const value = String(status ?? '').trim().toLowerCase();
+    return value === '0' || value === '200' || value === 'success';
+};
+
+/** 签到提交 stu_auto_sign 使用的固定设备字段（与官方安卓客户端抓包一致）。 */
+const AUTO_SIGN_DEVICE_FIELDS = {
+    routerInfo: '02:00:00:00:00:00',
+    longitude: '0',
+    latitude: '0',
+    machineInfo: 'Android'
+} as const;
+
 export const signNow = async (
     client: Got,
     useVpn: boolean,
@@ -72,13 +91,13 @@ export const signNow = async (
     sessionId: string,
     courseSchedId: string
 ): Promise<any> => {
-    // The timestamp is short lived, so fetch it immediately before submitting the sign request.
-    const timestamp = await getServerTimestamp(client, useVpn, userId, sessionId);
-    const res = await client.post(buildScanSignUrl(useVpn), {
-        searchParams: {
+    // 学校已停用直接调用 stu_scan_sign，改为 8181 的 stu_auto_sign：
+    // POST 表单、无查询串、不需要时间戳，时间窗由服务器自行判断。
+    const res = await client.post(buildAutoSignUrl(useVpn), {
+        form: {
             id: userId,
             courseSchedId,
-            timestamp: String(timestamp)
+            ...AUTO_SIGN_DEVICE_FIELDS
         },
         headers: buildHeaders(sessionId),
         followRedirect: false,
@@ -86,14 +105,14 @@ export const signNow = async (
     });
 
     if (res.statusCode !== 200) {
-        throw new Error(`签到失败，HTTP 状态: ${res.statusCode}`);
+        throw new Error(`签到结果未知（HTTP ${res.statusCode}），请刷新课程确认是否已签到`);
     }
 
     const result = parseJsonSafe(res.body);
     if (!result) {
-        throw new Error('签到失败：接口返回了无法解析的数据');
+        throw new Error('签到结果未知：接口返回了无法解析的数据，请刷新课程确认是否已签到');
     }
-    if (result.STATUS !== '0') {
+    if (!isStatusOk(result.STATUS)) {
         throw new Error(`签到失败：${result.ERRMSG || JSON.stringify(result)}`);
     }
     if (String(result.result?.stuSignStatus ?? '') !== '1') {
