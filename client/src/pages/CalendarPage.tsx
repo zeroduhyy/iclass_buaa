@@ -5,6 +5,8 @@ import { logout } from "../api/auth";
 import { fetchCourseDetails, generateSignQr, signNow as signCourse } from "../api/course";
 import type { CourseDetailItem } from "../types/api";
 import { clearSession, getUseVpnMode, getUserDisplay } from "../utils/session";
+import { chinaToday } from "../utils/chinaTime";
+import AutoSignPanel from "../components/AutoSignPanel";
 
 const weekdays = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
 const timeSlots = [
@@ -113,14 +115,15 @@ const CalendarPage = () => {
     const user = useMemo(() => getUserDisplay(), []);
     const isVpnMode = useMemo(() => getUseVpnMode(), []);
     const isSelectedSigned = selectedCourse?.signStatus === "1";
-    const todayYmd = formatYmd(new Date());
+    // Beijing date: class times are Beijing time whatever this computer's time zone is.
+    const todayYmd = formatYmd(chinaToday());
 
     const showMessage = (text: string, tone: MessageTone = "info") => {
         setPanelMessage(text ? { tone, text } : null);
     };
 
     const weekStart = useMemo(() => {
-        const now = new Date();
+        const now = chinaToday();
         const day = now.getDay();
         const mondayShift = day === 0 ? 6 : day - 1;
         const monday = new Date(now);
@@ -368,6 +371,8 @@ const CalendarPage = () => {
                     <button className="logout-btn" onClick={() => void handleLogout()}>退出登录</button>
                 </div>
             </header>
+
+            <AutoSignPanel />
 
             <section className="week-nav card">
                 <div className="week-nav-controls">

@@ -19,6 +19,14 @@ import {
 	SemesterCoursesData
 } from '../services/courseService';
 import logger from '../utils/logger';
+import {
+	ensureBackgroundContext,
+	forgetLogin,
+	getAutoSignStatus,
+	rememberLogin,
+	updateAutoSign,
+	waitForSavedLogin
+} from '../services/autoSignService';
 
 type AnyServiceResult = AuthServiceResult<any> | CourseServiceResult<any>;
 
@@ -132,6 +140,8 @@ const handleLogin = async (req: IncomingMessage, res: ServerResponse): Promise<v
 		: body?.useVpn === undefined ? 'auto' : parseBool(body?.useVpn, false) ? 'vpn' : 'direct';
 	const captcha = String(body?.captcha ?? '').trim();
 	const attemptId = String(body?.attemptId ?? '').trim();
+	// Remember the login (encrypted on this computer) for auto-login and background auto-sign.
+	const remember = parseBool(body?.remember, false);
 
 	if (!studentId || !password) {
 		logger.warn(`[login] 参数缺失: studentIdPresent=${Boolean(studentId)}, passwordPresent=${Boolean(password)}, bodyKeys=[${bodyKeys}]`);
@@ -165,6 +175,9 @@ const handleLogin = async (req: IncomingMessage, res: ServerResponse): Promise<v
 			}
 		}
 		sessions.set(token, { context, courses: [] });
+		if (remember) {
+			rememberLogin({ studentId, password, networkMode }, context);
+		}
 		logger.info(`[login] 登录成功: userId=${context.userId}, userName=${context.userName}, token=${token.slice(0, 8)}...`);
 
 		sendJson(res, 200, {
@@ -297,11 +310,67 @@ const handleSignQr = async (req: IncomingMessage, res: ServerResponse): Promise<
 	sendJson(res, result.ok ? 200 : 400, result);
 };
 
+/** Logs in with the saved login, so the app opens without the login page. */
+const handleSavedSession = async (_req: IncomingMessage, res: ServerResponse): Promise<void> => {
+	await waitForSavedLogin();
+	const status = getAutoSignStatus();
+	if (!status.hasSavedLogin) {
+		sendJson(res, 200, { ok: false, code: 'NO_SAVED_LOGIN', message: '', data: null });
+		return;
+	}
+	try {
+		const context = await ensureBackgroundContext();
+		const token = randomUUID();
+		sessions.set(token, { context, courses: [] });
+		sendJson(res, 200, {
+			ok: true,
+			code: 'OK',
+			message: '已自动登录',
+			data: { token, userId: context.userId, userName: context.userName, useVpn: context.useVpn }
+		});
+	} catch (error) {
+		sendJson(res, 200, {
+			ok: false,
+			code: 'SAVED_LOGIN_FAILED',
+			message: error instanceof Error ? error.message : '自动登录失败',
+			data: { studentId: status.studentId }
+		});
+	}
+};
+
+const handleAutoSign = async (req: IncomingMessage, res: ServerResponse, method: string): Promise<void> => {
+	if (!sessions.get(extractToken(req))) {
+		unauthorized(res);
+		return;
+	}
+	if (method === 'GET') {
+		sendJson(res, 200, { ok: true, code: 'OK', message: '', data: getAutoSignStatus() });
+		return;
+	}
+	const body = await readJsonBody(req);
+	try {
+		const status = updateAutoSign({
+			enabled: typeof body?.enabled === 'boolean' ? body.enabled : undefined,
+			offsetMinutes: body?.offsetMinutes === undefined ? undefined : Number(body.offsetMinutes)
+		});
+		sendJson(res, 200, { ok: true, code: 'OK', message: status.lastMessage, data: status });
+	} catch (error) {
+		sendJson(res, 400, {
+			ok: false,
+			code: 'AUTO_SIGN_FAILED',
+			message: error instanceof Error ? error.message : '设置失败',
+			data: getAutoSignStatus()
+		});
+	}
+};
+
 const handleLogout = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
 	const token = extractToken(req);
 	if (token) {
 		sessions.delete(token);
 	}
+	// Logging out forgets the saved login and stops auto-sign, as on Android.
+	forgetLogin();
 
 	sendJson(res, 200, {
 		ok: true,
@@ -360,6 +429,16 @@ export const startApiServer = (port: number = DEFAULT_API_PORT) => {
 
 			if (method === 'POST' && path === '/api/sign-qr') {
 				await handleSignQr(req, res);
+				return;
+			}
+
+			if (method === 'GET' && path === '/api/saved-session') {
+				await handleSavedSession(req, res);
+				return;
+			}
+
+			if ((method === 'GET' || method === 'POST') && path === '/api/auto-sign') {
+				await handleAutoSign(req, res, method);
 				return;
 			}
 
