@@ -44,6 +44,21 @@ export const getServerTimestamp = async (
     userId: string,
     sessionId: string
 ): Promise<number> => {
+    // 先用 GET 读取（不需要业务会话，2026-11 实测可用），失败再用旧的带会话 POST。
+    try {
+        const plain = await client.get(buildTimestampUrl(useVpn), {
+            followRedirect: false,
+            throwHttpErrors: false
+        });
+        const plainResult = plain.statusCode === 200 ? parseJsonSafe(plain.body) : null;
+        const plainTimestamp = Number(plainResult?.timestamp ?? plainResult?.result?.timestamp);
+        if (plainResult && plainResult.STATUS === '0' && Number.isFinite(plainTimestamp) && plainTimestamp > 0) {
+            return plainTimestamp;
+        }
+    } catch {
+        // 改用下面的 POST
+    }
+
     const res = await client.post(buildTimestampUrl(useVpn), {
         searchParams: { id: userId },
         headers: buildHeaders(sessionId),
@@ -110,7 +125,7 @@ export const signNow = async (
             throw new Error('登录状态已失效，请重新登录');
         }
         if (location.includes('error.jsp')) {
-            throw new Error('签到被服务器拒绝，请刷新后重试');
+            throw new Error('学校已不再接受程序直接签到，请点「二维码」用智慧北航 App 扫码签到');
         }
     }
     if (res.statusCode !== 200) {
