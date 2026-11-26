@@ -2,7 +2,6 @@ import type { CourseDetailItem, CourseItem } from '../core/courseCore';
 import { IClassClient } from '../core/IClassClient';
 import { buildScanSignUrl } from '../core/signCore';
 import logger from '../utils/logger';
-import { chinaDate } from '../utils/chinaTime';
 
 export interface ServiceResult<T> {
 	ok: boolean;
@@ -34,6 +33,34 @@ const normalizeErrorMessage = (error: unknown): string => {
 		return error.message;
 	}
 	return '请求失败，请稍后重试';
+};
+
+const formatDateYmd = (date: Date): string => {
+	const year = date.getFullYear();
+	const month = String(date.getMonth() + 1).padStart(2, '0');
+	const day = String(date.getDate()).padStart(2, '0');
+	return `${year}${month}${day}`;
+};
+
+const parseDateTimeMs = (dateYmd: string, hhmm: string): number | null => {
+	const match = String(dateYmd).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+	const timeMatch = String(hhmm).match(/^(\d{2}):(\d{2})/);
+	if (!match || !timeMatch) {
+		return null;
+	}
+
+	const year = Number(match[1]);
+	const month = Number(match[2]);
+	const day = Number(match[3]);
+	const hour = Number(timeMatch[1]);
+	const minute = Number(timeMatch[2]);
+
+	const date = new Date(year, month - 1, day, hour, minute, 0, 0);
+	if (Number.isNaN(date.getTime())) {
+		return null;
+	}
+
+	return date.getTime();
 };
 
 const mergeCourseDetails = (
@@ -107,8 +134,9 @@ export const getMergedCourseDetailsForFrontend = async (
 		const dateQueriedDetails: CourseDetailItem[] = [];
 
 		for (let offset = 0; offset <= futureDays; offset += 1) {
-			// Beijing date, whatever time zone this computer uses.
-			const dateStr = chinaDate(offset).replace(/-/g, '');
+			const date = new Date();
+			date.setDate(date.getDate() + offset);
+			const dateStr = formatDateYmd(date);
 			try {
 				const dayDetails = await client.getCourseByDate(dateStr);
 				dateQueriedDetails.push(...dayDetails);

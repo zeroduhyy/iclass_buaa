@@ -14,8 +14,6 @@ export interface LoginRequest {
     /** Captcha answer, with the attempt it belongs to. */
     captcha?: string;
     attemptId?: string;
-    /** Save the login on this computer for auto-login and background auto-sign. */
-    remember?: boolean;
 }
 
 export interface LoginData {
@@ -58,20 +56,4 @@ export interface SignQrData {
     qrUrl: string;
     courseSchedId: string;
     timestamp: number;
-}
-
-export interface AutoSignStatus {
-    enabled: boolean;
-    offsetMinutes: number;
-    offsetChoices: number[];
-    hasSavedLogin: boolean;
-    persistent: boolean;
-    studentId: string;
-    nextTriggerAt: number | null;
-    nextTriggerText: string;
-    nextCourseName: string;
-    lastRunAt: number | null;
-    lastMessage: string;
-    needsCaptcha: boolean;
-    recent: string[];
 }

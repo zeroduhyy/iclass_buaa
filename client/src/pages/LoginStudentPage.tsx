@@ -1,8 +1,7 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { SubmitEventHandler } from "react";
 import { useNavigate } from "react-router-dom";
 import { login } from "../api/auth";
-import { getSavedSession } from "../api/autoSign";
 import type { CaptchaData, LoginData, NetworkMode } from "../types/api";
 import { setSession } from "../utils/session";
 
@@ -22,32 +21,6 @@ const LoginStudentPage = () => {
     const [error, setError] = useState("");
     const [challenge, setChallenge] = useState<CaptchaData | null>(null);
     const [captcha, setCaptcha] = useState("");
-    const [remember, setRemember] = useState(true);
-    const [autoLoggingIn, setAutoLoggingIn] = useState(true);
-
-    // Log in with the login saved on this computer, if any.
-    useEffect(() => {
-        let cancelled = false;
-        void getSavedSession().then((res) => {
-            if (cancelled) return;
-            if (res.ok && res.data && "token" in res.data) {
-                const data = res.data as LoginData;
-                setSession(data.token, data.userId, data.userName, data.useVpn);
-                navigate("/calendar", { replace: true });
-                return;
-            }
-            if (res.data && "studentId" in res.data && res.data.studentId) {
-                setStudentId(res.data.studentId);
-            }
-            if (res.code === "SAVED_LOGIN_FAILED") {
-                setError(`自动登录失败：${res.message}`);
-            }
-            setAutoLoggingIn(false);
-        });
-        return () => {
-            cancelled = true;
-        };
-    }, [navigate]);
 
     /** Sends the login; with [answer] it answers the current captcha, otherwise starts over. */
     const performLogin = async (answer?: string) => {
@@ -68,8 +41,7 @@ const LoginStudentPage = () => {
                 password,
                 networkMode,
                 captcha: answer,
-                attemptId: answer ? challenge?.attemptId : undefined,
-                remember
+                attemptId: answer ? challenge?.attemptId : undefined
             });
 
             if (res.code === "CAPTCHA_REQUIRED" && res.data) {
@@ -115,16 +87,6 @@ const LoginStudentPage = () => {
     };
 
     const modeHint = NETWORK_MODES.find((mode) => mode.value === networkMode)?.hint;
-
-    if (autoLoggingIn) {
-        return (
-            <main className="page login-page">
-                <section className="card auth-card">
-                    <p className="hint auth-subtitle">正在自动登录…</p>
-                </section>
-            </main>
-        );
-    }
 
     return (
         <main className="page login-page">
@@ -226,11 +188,6 @@ const LoginStudentPage = () => {
                         ))}
                     </div>
                     <p className="hint mode-hint">{modeHint}</p>
-
-                    <label className="check remember-check">
-                        <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
-                        记住登录（下次自动登录，后台自动签到需要）
-                    </label>
 
                     <div className="actions auth-actions auth-actions-lg">
                         <button type="submit" disabled={loading}>
