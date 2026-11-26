@@ -2,17 +2,28 @@ import { useState } from "react";
 import type { SubmitEventHandler } from "react";
 import { useNavigate } from "react-router-dom";
 import { login } from "../api/auth";
+import type { CaptchaData, LoginData, NetworkMode } from "../types/api";
 import { setSession } from "../utils/session";
+
+const NETWORK_MODES: { value: NetworkMode; label: string; hint: string }[] = [
+    { value: "auto", label: "自动", hint: "能直连 iClass 就直连，连不上自动改走 WebVPN。" },
+    { value: "direct", label: "直连", hint: "只走直连，适合一直在校园网的情况。" },
+    { value: "vpn", label: "WebVPN", hint: "只走 WebVPN（d.buaa.edu.cn），登录需要输入验证码。" }
+];
 
 const LoginStudentPage = () => {
     const navigate = useNavigate();
     const [studentId, setStudentId] = useState("");
     const [password, setPassword] = useState("");
     const [showPassword, setShowPassword] = useState(false);
-    const [loginMode, setLoginMode] = useState<"direct" | "vpn" | null>(null);
+    const [networkMode, setNetworkMode] = useState<NetworkMode>("auto");
+    const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
+    const [challenge, setChallenge] = useState<CaptchaData | null>(null);
+    const [captcha, setCaptcha] = useState("");
 
-    const performLogin = async (useVpn: boolean) => {
+    /** Sends the login; with [answer] it answers the current captcha, otherwise starts over. */
+    const performLogin = async (answer?: string) => {
         if (!studentId.trim()) {
             setError("请输入学号");
             return;
@@ -22,34 +33,60 @@ const LoginStudentPage = () => {
             return;
         }
 
-        const mode = useVpn ? "vpn" : "direct";
-        setLoginMode(mode);
+        setLoading(true);
         setError("");
         try {
             const res = await login({
                 studentId: studentId.trim(),
                 password,
-                useVpn
+                networkMode,
+                captcha: answer,
+                attemptId: answer ? challenge?.attemptId : undefined
             });
 
+            if (res.code === "CAPTCHA_REQUIRED" && res.data) {
+                setChallenge(res.data as CaptchaData);
+                setCaptcha("");
+                setError(answer ? res.message : "");
+                return;
+            }
             if (!res.ok || !res.data) {
-                setError(res.message || `${useVpn ? "VPN" : "直连"}登录失败`);
+                setChallenge(null);
+                setError(res.message || "登录失败");
                 return;
             }
 
-            setSession(res.data.token, res.data.userId, res.data.userName, useVpn);
+            const data = res.data as LoginData;
+            setSession(data.token, data.userId, data.userName, data.useVpn);
             navigate("/calendar", { replace: true });
         } catch (err) {
-            setError(err instanceof Error ? err.message : `${useVpn ? "VPN" : "直连"}登录失败`);
+            setError(err instanceof Error ? err.message : "登录失败");
         } finally {
-            setLoginMode(null);
+            setLoading(false);
         }
     };
 
-    const handleDirectLogin: SubmitEventHandler<HTMLFormElement> = (event) => {
+    const handleSubmit: SubmitEventHandler<HTMLFormElement> = (event) => {
         event.preventDefault();
-        void performLogin(false);
+        if (challenge) {
+            if (!captcha.trim()) {
+                setError("请输入验证码");
+                return;
+            }
+            void performLogin(captcha.trim());
+            return;
+        }
+        void performLogin();
     };
+
+    const changeMode = (mode: NetworkMode) => {
+        setNetworkMode(mode);
+        setChallenge(null);
+        setCaptcha("");
+        setError("");
+    };
+
+    const modeHint = NETWORK_MODES.find((mode) => mode.value === networkMode)?.hint;
 
     return (
         <main className="page login-page">
@@ -60,12 +97,15 @@ const LoginStudentPage = () => {
                     <p className="hint auth-subtitle">直连和 WebVPN 使用同一组统一认证账号密码</p>
                 </div>
 
-                <form onSubmit={handleDirectLogin} className="stack auth-form" autoComplete="off">
+                <form onSubmit={handleSubmit} className="stack auth-form" autoComplete="off">
                     <label htmlFor="studentId">学号</label>
                     <input
                         id="studentId"
                         value={studentId}
-                        onChange={(e) => setStudentId(e.target.value)}
+                        onChange={(e) => {
+                            setStudentId(e.target.value);
+                            setChallenge(null);
+                        }}
                         placeholder="例如：12345678"
                         autoComplete="off"
                         spellCheck={false}
@@ -103,12 +143,55 @@ const LoginStudentPage = () => {
                             )}
                         </button>
                     </div>
+
+                    {challenge && (
+                        <>
+                            <label htmlFor="captcha">验证码</label>
+                            <div className="captcha-row">
+                                <input
+                                    id="captcha"
+                                    value={captcha}
+                                    onChange={(e) => setCaptcha(e.target.value)}
+                                    placeholder="输入图中字符"
+                                    autoComplete="off"
+                                    spellCheck={false}
+                                    autoFocus
+                                />
+                                <button
+                                    type="button"
+                                    className="captcha-image"
+                                    onClick={() => void performLogin()}
+                                    disabled={loading}
+                                    title="看不清？点击换一张"
+                                >
+                                    <img src={challenge.captchaImage} alt="验证码，点击换一张" />
+                                </button>
+                            </div>
+                            <p className="hint captcha-hint">学校要求输入验证码；看不清可以点图片换一张。</p>
+                        </>
+                    )}
+
+                    <label>网络</label>
+                    <div className="segmented" role="radiogroup" aria-label="网络">
+                        {NETWORK_MODES.map((mode) => (
+                            <button
+                                key={mode.value}
+                                type="button"
+                                role="radio"
+                                aria-checked={networkMode === mode.value}
+                                className={networkMode === mode.value ? "active" : ""}
+                                onClick={() => changeMode(mode.value)}
+                                disabled={loading}
+                            >
+                                {mode.label}
+                            </button>
+                        ))}
+                    </div>
+                    <p className="hint mode-hint">{modeHint}</p>
+
                     <div className="actions auth-actions auth-actions-lg">
-                        <button type="button" className="secondary" onClick={() => void performLogin(true)} disabled={loginMode !== null}>
-                            {loginMode === "vpn" ? "登录中..." : "VPN 登录"}
-                        </button>
-                        <button type="submit" disabled={loginMode !== null}>
-                            {loginMode === "direct" ? "登录中..." : "直连登录"}
+                        <button type="submit" disabled={loading}>
+                            {loading ? "登录中..." : "登录"}
                         </button>
                     </div>
                 </form>

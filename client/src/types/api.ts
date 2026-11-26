@@ -5,16 +5,29 @@ export interface ApiResponse<T> {
     data: T | null;
 }
 
+export type NetworkMode = "auto" | "direct" | "vpn";
+
 export interface LoginRequest {
     studentId: string;
     password: string;
-    useVpn: boolean;
+    networkMode: NetworkMode;
+    /** Captcha answer, with the attempt it belongs to. */
+    captcha?: string;
+    attemptId?: string;
 }
 
 export interface LoginData {
     token: string;
     userId: string;
     userName: string;
+    /** The route actually used (automatic mode picks one). */
+    useVpn: boolean;
+}
+
+/** Sent with code CAPTCHA_REQUIRED. */
+export interface CaptchaData {
+    attemptId: string;
+    captchaImage: string;
 }
 
 export interface CourseDetailItem {

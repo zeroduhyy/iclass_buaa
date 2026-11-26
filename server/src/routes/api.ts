@@ -3,9 +3,11 @@ import { randomUUID } from 'crypto';
 import { URL } from 'url';
 import type { CourseItem } from '../core/courseCore';
 import {
+	CaptchaChallenge,
 	loginAndBuildContext,
 	LoginContext,
 	LoginInput,
+	NetworkMode,
 	ServiceResult as AuthServiceResult
 } from '../services/authService';
 import {
@@ -123,7 +125,13 @@ const handleLogin = async (req: IncomingMessage, res: ServerResponse): Promise<v
 
 	const studentId = String(body?.studentId ?? '').trim();
 	const password = String(body?.password ?? '');
-	const useVpn = parseBool(body?.useVpn, false);
+	// networkMode: auto | direct | vpn. Older clients send useVpn instead.
+	const rawMode = String(body?.networkMode ?? '').trim().toLowerCase();
+	const networkMode: NetworkMode = rawMode === 'direct' || rawMode === 'vpn' || rawMode === 'auto'
+		? rawMode
+		: body?.useVpn === undefined ? 'auto' : parseBool(body?.useVpn, false) ? 'vpn' : 'direct';
+	const captcha = String(body?.captcha ?? '').trim();
+	const attemptId = String(body?.attemptId ?? '').trim();
 
 	if (!studentId || !password) {
 		logger.warn(`[login] 参数缺失: studentIdPresent=${Boolean(studentId)}, passwordPresent=${Boolean(password)}, bodyKeys=[${bodyKeys}]`);
@@ -141,10 +149,12 @@ const handleLogin = async (req: IncomingMessage, res: ServerResponse): Promise<v
 	const input: LoginInput = {
 		studentId,
 		password,
-		useVpn
+		networkMode,
+		captcha: captcha || undefined,
+		attemptId: attemptId || undefined
 	};
 
-	logger.info(`[login] 参数校验通过: studentId=${studentId}, useVpn=${input.useVpn}`);
+	logger.info(`[login] 参数校验通过: studentId=${studentId}, networkMode=${networkMode}, captcha=${captcha ? 'yes' : 'no'}`);
 
 	try {
 		const context = await loginAndBuildContext(input);
@@ -164,10 +174,24 @@ const handleLogin = async (req: IncomingMessage, res: ServerResponse): Promise<v
 			data: {
 				token,
 				userId: context.userId,
-				userName: context.userName
+				userName: context.userName,
+				useVpn: context.useVpn
 			}
 		});
 	} catch (error) {
+		if (error instanceof CaptchaChallenge) {
+			logger.info('[login] 需要验证码');
+			sendJson(res, 200, {
+				ok: false,
+				code: 'CAPTCHA_REQUIRED',
+				message: error.message,
+				data: {
+					attemptId: error.attemptId,
+					captchaImage: error.imageDataUrl
+				}
+			});
+			return;
+		}
 		const message = error instanceof Error ? error.message : '登录失败';
 		logger.warn(`[login] 登录失败: ${message}`);
 		sendJson(res, 401, {

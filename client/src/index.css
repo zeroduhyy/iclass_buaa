@@ -203,6 +203,77 @@ input:focus {
   font-size: 16px;
 }
 
+/* ---------- Network mode + captcha ---------- */
+
+.segmented {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  border: 1px solid #c8d4e0;
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--surface-soft);
+}
+
+.segmented > button {
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink-soft);
+  padding: 10px 8px;
+  border-left: 1px solid #c8d4e0;
+}
+
+.segmented > button:first-child {
+  border-left: 0;
+}
+
+.segmented > button:hover:not(:disabled) {
+  background: #eaf2fb;
+  color: var(--ink);
+  transform: none;
+  box-shadow: none;
+}
+
+.segmented > button.active,
+.segmented > button.active:hover:not(:disabled) {
+  background: var(--brand);
+  color: #fff;
+}
+
+.mode-hint,
+.captcha-hint {
+  margin: -2px 0 0;
+  font-size: 13px;
+}
+
+.captcha-row {
+  display: grid;
+  grid-template-columns: 1fr 132px;
+  gap: 10px;
+  align-items: stretch;
+}
+
+.captcha-image {
+  padding: 0;
+  background: #fff;
+  border: 1px solid #c8d4e0;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+}
+
+.captcha-image:hover:not(:disabled) {
+  background: #fff;
+  transform: none;
+  box-shadow: 0 0 0 3px rgba(21, 96, 189, 0.15);
+}
+
+.captcha-image img {
+  width: 100%;
+  height: 100%;
+  max-height: 48px;
+  object-fit: contain;
+}
+
 /* ---------- Buttons ---------- */
 
 button {

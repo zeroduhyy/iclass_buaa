@@ -1,13 +1,14 @@
 import axios from "axios";
 import { http } from "./http";
-import type { ApiResponse, LoginData, LoginRequest } from "../types/api";
+import type { ApiResponse, CaptchaData, LoginData, LoginRequest } from "../types/api";
 
-export const login = async (payload: LoginRequest): Promise<ApiResponse<LoginData>> => {
+export const login = async (payload: LoginRequest): Promise<ApiResponse<LoginData | CaptchaData>> => {
     try {
-        const res = await http.post<ApiResponse<LoginData>>("/api/login", payload);
+        // Logging in through WebVPN takes several round trips.
+        const res = await http.post<ApiResponse<LoginData | CaptchaData>>("/api/login", payload, { timeout: 60000 });
         return res.data;
     } catch (error) {
-        if (axios.isAxiosError<ApiResponse<LoginData>>(error) && error.response?.data) {
+        if (axios.isAxiosError<ApiResponse<LoginData | CaptchaData>>(error) && error.response?.data) {
             return error.response.data;
         }
 

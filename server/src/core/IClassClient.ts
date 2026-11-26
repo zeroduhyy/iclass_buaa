@@ -1,13 +1,16 @@
 import got, { Got } from 'got';
 import { CookieJar } from 'tough-cookie';
-import { ssoLogin } from './authCore';
+import { PendingCaptcha, ssoLogin } from './authCore';
 import { CourseDetailItem, CourseItem, getCourseByDate as getCourseByDateCore, getCourses, getCoursesDetail, getCurrentSemester } from './courseCore';
 import { getServerTimestamp, signNow as signNowOnline } from './signCore';
-import { fetchUserInfoFromApi, resolveIclassLoginName } from './userCore';
+import { fetchSignCredential, fetchUserInfoFromApi, resolveIclassLoginName } from './userCore';
 
 export interface IClassLoginInput {
     studentId: string;
     password: string;
+    /** Answer to the captcha of [pending], when the previous attempt asked for one. */
+    captcha?: string;
+    pending?: PendingCaptcha | null;
 }
 
 export class IClassClient {
@@ -16,7 +19,7 @@ export class IClassClient {
     public sessionId: string | null = null;
     public loginName: string | null = null;
 
-    constructor(private useVpn: boolean = false) {
+    constructor(public readonly useVpn: boolean = false) {
         const cookieJar = new CookieJar();
         this.client = got.extend({
             cookieJar,
@@ -42,7 +45,10 @@ export class IClassClient {
             throw new Error('请输入统一认证密码');
         }
 
-        await ssoLogin(this.client, studentId, password, this.useVpn);
+        await ssoLogin(this.client, studentId, password, this.useVpn, {
+            captcha: input.captcha,
+            pending: input.pending
+        });
         const loginName = await resolveIclassLoginName(this.client, this.useVpn);
         if (!loginName) {
             throw new Error('无法从 iClass 跳转解析 loginName');
@@ -134,17 +140,18 @@ export class IClassClient {
     }
 
     async signNow(courseSchedId: string): Promise<any> {
-        const userId = this.userInfo?.id;
-        const sessionId = this.sessionId;
-        if (!userId || !sessionId) {
+        if (!this.userInfo?.id || !this.sessionId) {
             throw new Error('缺少 userId 或 sessionId，请先登录并获取用户信息');
         }
 
+        // The sign endpoint only accepts the real id + sessionId from the app login; the
+        // loginName used as Sessionid for queries is rejected (302 to its error page).
+        const credential = await fetchSignCredential(this.client, this.useVpn, this.loginName);
         return await signNowOnline(
             this.client,
             this.useVpn,
-            String(userId),
-            sessionId,
+            credential.userId,
+            credential.sessionId,
             courseSchedId
         );
     }

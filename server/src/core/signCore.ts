@@ -104,6 +104,15 @@ export const signNow = async (
         throwHttpErrors: false
     });
 
+    if ([301, 302, 303, 307, 308].includes(res.statusCode)) {
+        const location = String(res.headers.location ?? '');
+        if (location.includes('/login')) {
+            throw new Error('登录状态已失效，请重新登录');
+        }
+        if (location.includes('error.jsp')) {
+            throw new Error('签到被服务器拒绝，请刷新后重试');
+        }
+    }
     if (res.statusCode !== 200) {
         throw new Error(`签到结果未知（HTTP ${res.statusCode}），请刷新课程确认是否已签到`);
     }

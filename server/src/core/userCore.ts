@@ -1,8 +1,7 @@
 import type { Got } from 'got';
 import { ICLASS_URLS } from '../config/constants';
 import logger from '../utils/logger';
-
-const LOGIN_NAME_REDIRECT_LIMIT = 8;
+import { follow } from './authCore';
 
 export interface UserInfoResult {
     userInfo: any;
@@ -10,56 +9,62 @@ export interface UserInfoResult {
 }
 
 /**
- * Follows the iClass MyCenter SSO redirect chain and extracts the transient loginName.
+ * Follows the iClass MyCenter SSO redirect chain and extracts the one-time loginName.
+ * Stops as soon as it appears, without requesting the page that carries it.
  */
 export const resolveIclassLoginName = async (
     client: Got,
     useVpn: boolean
 ): Promise<string | null> => {
     const network = useVpn ? 'VPN' : 'DIRECT';
-    const noRedirectClient = client.extend({
+    const result = await follow(client, ICLASS_URLS[network].MY_CENTER, '获取 iClass 登录名');
+    return result.loginName;
+};
+
+export interface SignCredential {
+    userId: string;
+    sessionId: string;
+}
+
+/**
+ * Gets the id + sessionId for signing, as the iClass app does: resolve a fresh one-time
+ * loginName with the current login cookies, then exchange it at the app login endpoint.
+ * The sign endpoint rejects the loginName that the query APIs accept as Sessionid.
+ */
+export const fetchSignCredential = async (
+    client: Got,
+    useVpn: boolean,
+    fallbackLoginName: string | null
+): Promise<SignCredential> => {
+    const network = useVpn ? 'VPN' : 'DIRECT';
+    const loginName = (await resolveIclassLoginName(client, useVpn)) ?? fallbackLoginName;
+    if (!loginName) {
+        throw new Error('获取签到凭证失败：登录状态已失效，请重新登录');
+    }
+    const res: any = await client.get(ICLASS_URLS[network].APP_LOGIN, {
+        searchParams: {
+            password: '',
+            phone: loginName,
+            userLevel: '1',
+            verificationType: '2',
+            verificationUrl: ''
+        },
         followRedirect: false,
         throwHttpErrors: false
     });
-    let currentUrl: string = ICLASS_URLS[network].MY_CENTER;
-    let resolvedLoginName: string | null = null;
-
-    for (let i = 0; i < LOGIN_NAME_REDIRECT_LIMIT; i += 1) {
-        const res: any = await noRedirectClient.get(currentUrl);
-        const finalUrl = res.url || currentUrl;
-
-        const loginName = extractLoginName(finalUrl)
-            || extractLoginName(String(res.headers.location || ''))
-            || extractLoginName(typeof res.body === 'string' ? res.body : '');
-        if (loginName) {
-            resolvedLoginName = loginName;
-        }
-
-        const location = String(res.headers.location || '');
-        if (res.statusCode < 300 || res.statusCode >= 400 || !location) {
-            return resolvedLoginName;
-        }
-
-        currentUrl = new URL(location, finalUrl).toString();
-    }
-
-    return resolvedLoginName;
-};
-
-/**
- * Decodes loginName without treating literal plus signs as spaces.
- */
-const extractLoginName = (value: string): string | null => {
-    const match = /[?&#]loginname=([^&#"'<>\s]+)/i.exec(value);
-    if (!match?.[1]) {
-        return null;
-    }
-
+    let json: any = null;
     try {
-        return decodeURIComponent(match[1]);
+        json = typeof res.body === 'string' ? JSON.parse(res.body) : res.body;
     } catch {
-        return match[1];
+        json = null;
     }
+    const status = String(json?.STATUS ?? '').trim().toLowerCase();
+    const userId = String(json?.result?.id ?? '');
+    const sessionId = String(json?.result?.sessionId ?? '');
+    if (res.statusCode !== 200 || !['0', '200', 'success'].includes(status) || !userId || !sessionId) {
+        throw new Error(json?.ERRMSG || `获取签到凭证失败（HTTP ${res.statusCode}），请重新登录后再试`);
+    }
+    return { userId, sessionId };
 };
 
 export const fetchUserInfoFromApi = async (
