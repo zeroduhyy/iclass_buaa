@@ -147,6 +147,31 @@ export class IClassClient {
         // The sign endpoint only accepts the real id + sessionId from the app login; the
         // loginName used as Sessionid for queries is rejected (302 to its error page).
         const credential = await fetchSignCredential(this.client, this.useVpn, this.loginName);
+
+        // As UBAA does: check today's (Beijing) timetable with this credential first. An
+        // already signed lesson needs no submit (the server rejects a repeat sign). If the
+        // query itself fails, still try to sign.
+        try {
+            const today = await getCourseByDateCore(
+                this.client,
+                this.useVpn,
+                credential.userId,
+                credential.sessionId,
+                beijingDateStr()
+            );
+            const lesson = today.find((item) => item.courseSchedId === courseSchedId);
+            if (!lesson) {
+                throw new Error('签到失败：今天的课表里没有这节课，请刷新后再试');
+            }
+            if (lesson.signStatus === '1') {
+                return { STATUS: '0', result: { stuSignStatus: '1' }, alreadySigned: true };
+            }
+        } catch (error) {
+            if (error instanceof Error && error.message.startsWith('签到失败')) {
+                throw error;
+            }
+        }
+
         return await signNowOnline(
             this.client,
             this.useVpn,
@@ -156,3 +181,10 @@ export class IClassClient {
         );
     }
 }
+
+/** Today's Beijing date as YYYYMMDD (class dates are Beijing dates). */
+const beijingDateStr = (): string => {
+    const shifted = new Date(Date.now() + 8 * 60 * 60 * 1000);
+    const pad = (value: number) => String(value).padStart(2, '0');
+    return `${shifted.getUTCFullYear()}${pad(shifted.getUTCMonth() + 1)}${pad(shifted.getUTCDate())}`;
+};
